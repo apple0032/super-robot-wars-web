@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>SRW Web Game (Fixed Map & Position)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            font-family: "Microsoft JhengHei", "Heiti TC", sans-serif;
+            background-color: #202020;
+            color: white;
+            display: flex;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #canvas-container {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1;
+            cursor: grab;
+        }
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 10;
+        }
+
+        #ui-panel {
+            position: absolute; right: 0; top: 0; width: 340px;
+            height: 100vh;
+            background-color: rgba(30, 30, 30, 0.95); padding: 15px;
+            display: flex; flex-direction: column; border-left: 2px solid #444;
+            pointer-events: auto; color: white; overflow-y: auto;
+        }
+
+        .control-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+        .control-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #ccc; }
+        .control-row span { flex: 1; }
+        input[type=range] { width: 55%; cursor: pointer; }
+        input[type=checkbox] { cursor: pointer; transform: scale(1.2); margin-right: 10px;}
+        .btn-small { padding: 4px 8px; background: #555; border: 1px solid #777; color: white; cursor: pointer; font-size: 12px; border-radius: 4px; }
+        .btn-small:hover { background: #777; }
+
+        #turn-banner {
+            position: absolute; top: 40%; left: -100%; width: 100%; height: 100px;
+            background: rgba(0, 0, 0, 0.85); color: white;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 48px; font-weight: bold; font-style: italic; 
+            border-top: 2px solid #fff; border-bottom: 2px solid #fff;
+            transition: left 0.5s ease-out; pointer-events: none;
+        }
+
+        #action-menu {
+            position: absolute; display: none; width: 200px;
+            background-color: rgba(30, 30, 30, 0.95);
+            border: 1px solid #666; border-radius: 8px; padding: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.8);
+            backdrop-filter: blur(4px); pointer-events: auto; z-index: 5000;
+        }
+        #action-menu h3 { margin: 0 0 8px 0; font-size: 14px; text-align: center; color: #ffd700; border-bottom: 1px solid #555; padding-bottom: 5px; }
+        #action-menu .btn { padding: 10px; margin: 4px 0; font-size: 14px; border-radius: 4px; width: 100%; text-align: left; cursor: pointer; color: white; border: 1px solid #666; background: #444; pointer-events: auto; }
+        .btn-move { background-color: #28a745; border-left: 5px solid #1e7e34; }
+        .btn-action { background-color: #2d5a88; border-left: 5px solid #4da6ff; }
+        .btn-cancel { background-color: #442222; border-color: #663333; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .overlay-label { position: absolute; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; }
+        .hp-bar-container { width: 40px; height: 6px; background: #333; border: 1px solid #000; }
+        .hp-bar-fill { height: 100%; background: #0f0; width: 100%; transition: width 0.2s; }
+
+        .damage-popup { color: #ff3333; font-size: 28px; font-weight: 900; text-shadow: 2px 2px 0px #000; animation: float-up 1s forwards; }
+        .miss-popup { color: #4da6ff; font-size: 28px; font-weight: 900; text-shadow: 2px 2px 0px #000; animation: float-up 1s forwards; }
+        .sword-icon-popup { font-size: 40px; animation: icon-pop 0.6s forwards; }
+
+        @keyframes float-up { 0% { transform: translate(-50%, 0) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50px) scale(1); opacity: 0; } }
+        @keyframes icon-pop { 0% { transform: translate(-50%, 0) scale(0); opacity: 0; } 30% { transform: translate(-50%, 0) scale(1.5); opacity: 1; } 100% { transform: translate(-50%, 0) scale(1); opacity: 0; } }
+
+        h2, h3 { margin-top: 0; color: #ffd700; text-align: center;}
+        .info-box { background: #333; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #444; }
+        .btn-end { background-color: #882d2d; text-align: center; font-weight: bold; margin-top: auto; padding: 15px; font-size: 18px; width: 100%; cursor: pointer; color: white; border: 1px solid #666; pointer-events: auto;}
+        .btn-restart { background-color: #228b22; text-align: center; font-weight: bold; padding: 15px; font-size: 18px; display: none; margin-top: auto; width: 100%; cursor: pointer; color: white; border: 1px solid #666; pointer-events: auto;}
+        #log { flex: 1; background: #111; border: 1px solid #444; padding: 10px; overflow-y: auto; font-family: Consolas, monospace; font-size: 13px; color: #ddd; margin-bottom: 10px; border-radius: 4px; pointer-events: auto; }
+        .log-entry { margin-bottom: 6px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+        .log-damage { color: #ff6b6b; font-weight: bold; }
+        .log-system { color: #ffff00; }
+        .log-miss { color: #4da6ff; font-weight: bold; font-style: italic;}
+        .log-counter { color: #ff9900; font-weight: bold; }
+
+        .explosion-container { position: absolute; width: 0; height: 0; pointer-events: none; z-index: 200; }
+        .exp-particle { position: absolute; top: 0; left: 0; width: 8px; height: 8px; background-color: #ffcc00; border-radius: 50%; box-shadow: 0 0 10px #ff6600; animation: particle-anim 0.8s ease-out forwards; }
+        .exp-flash { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; background: white; border-radius: 50%; box-shadow: 0 0 20px 10px white; animation: flash-anim 0.4s ease-out forwards; z-index: 201; }
+        @keyframes particle-anim { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; } }
+        @keyframes flash-anim { 0% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(8); opacity: 0; } }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="ui-layer">
+    <div id="turn-banner">PLAYER PHASE</div>
+
+    <div id="action-menu">
+        <h3>行動指令</h3>
+        <button class="btn btn-move" id="btn-move" onclick="activateMovePhase()">🏃 移動</button>
+        <button class="btn btn-action" id="btn-melee" onclick="selectWeapon('melee')">⚔️ 格鬥 (射程1)<br><span style="font-size:11px;color:#ccc">傷害:50-70 | 命中:60-70%</span></button>
+        <button class="btn btn-action" id="btn-range" onclick="selectWeapon('range')">🔫 射擊 (射程2-4)<br><span style="font-size:11px;color:#ccc">傷害:40-60 | 命中:50-60%<br><span style="color:#ff6666">(移動後不可用)</span></span></button>
+        <button class="btn" onclick="waitAction()">✋ 待命</button>
+        <button class="btn btn-cancel" id="btn-cancel" onclick="cancelMove()">↩ 取消</button>
+    </div>
+
+    <div id="ui-panel">
+        <h2>SRW 3D</h2>
+        <div class="info-box" id="turn-indicator">
+            回合: <span id="turn-text" style="color: #4da6ff; font-weight: bold;">玩家回合</span>
+            <div style="margin-top:8px; border-top:1px solid #555; padding-top:5px; font-size:16px; color:#fff;">
+                Turn: <span id="turn-count" style="color:#ffd700; font-weight:bold;">1</span>
+            </div>
+        </div>
+        <div class="info-box" id="unit-stats">
+            <h3 style="margin:0 0 10px 0; font-size:16px;">機體資訊</h3>
+            <div id="stats-content">請選擇機體</div>
+        </div>
+        <div id="log"></div>
+
+        <div class="info-box">
+            <h3 style="margin-bottom:10px;">系統設定</h3>
+            <div class="control-group">
+                <div class="control-row">
+                    <span>💡 亮度</span>
+                    <input type="range" id="light-slider" min="0.5" max="3" step="0.1" value="2.0" oninput="updateSystemSettings()">
+                </div>
+                <div class="control-row">
+                    <span>🔍 縮放</span>
+                    <input type="range" id="cam-zoom" min="50" max="800" step="5" value="140" oninput="updateSystemSettings()">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-row">
+                    <span>↔️ 地圖位置 X</span>
+                    <input type="range" id="map-pan-x" min="-500" max="500" step="0.1" value="30" oninput="updateMapPosition()">
+                </div>
+                <div class="control-row">
+                    <span>↕️ 地圖位置 Z</span>
+                    <input type="range" id="map-pan-z" min="-500" max="500" step="0.1" value="15" oninput="updateMapPosition()">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-row">
+                    <span>🔄 旋轉</span>
+                    <input type="range" id="cam-rotate" min="0" max="360" step="1" value="0" oninput="updateSystemSettings()">
+                </div>
+                <div class="control-row">
+                    <button class="btn-small" onclick="resetCamera('north')">⬆️ 正北</button>
+                    <button class="btn-small" onclick="resetCamera('topdown')">🦅 鳥瞰</button>
+                </div>
+                <div class="control-row">
+                    <span>↕️ 高度</span>
+                    <input type="range" id="cam-height" min="50" max="600" step="10" value="200" oninput="updateSystemSettings()">
+                </div>
+            </div>
+            <div style="border-top:1px solid #555; margin: 5px 0;"></div>
+            <div class="control-group">
+                <div class="control-row">
+                    <span>❤️ 血條顯示</span>
+                    <input type="checkbox" id="hp-toggle" onchange="toggleHPBars()">
+                </div>
+            </div>
+            <div style="border-top:1px solid #555; margin: 5px 0;"></div>
+            <div class="control-group">
+                <div class="control-row">
+                    <span>🎵 音樂</span>
+                    <input type="checkbox" id="bgm-toggle" checked onchange="toggleBGM()">
+                </div>
+                <div class="control-row">
+                    <span>🔊 音量</span>
+                    <input type="range" id="vol-slider" min="0" max="1" step="0.1" value="0.7" oninput="updateAudioVolume()">
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-end" id="btn-end-turn" onclick="endTurn()">結束回合</button>
+        <button class="btn-restart" id="btn-restart" onclick="restartGame()">重新遊戲</button>
+    </div>
+    
+    <div id="overlay-container"></div>
+</div>
+
+<script>
+    // --- 3D 變數 ---
+    let scene, camera, renderer, raycaster, mouse;
+    let ambientLight; 
+    let gridMeshes = []; 
+    let unitMeshes = {}; 
+    const TILE_SIZE = 10; 
+    const BOARD_SIZE = 18;
+    const WORLD_OFFSET_X = - (BOARD_SIZE * TILE_SIZE) / 2 + TILE_SIZE / 2;
+    const WORLD_OFFSET_Z = - (BOARD_SIZE * TILE_SIZE) / 2 + TILE_SIZE / 2;
+
+    // 攝影機控制：初始值 X=30, Z=15
+    let cameraTarget = new THREE.Vector3(30, 0, 15); 
+    let isDraggingMap = false;
+    let dragStartPoint = { x: 0, y: 0 };
+    let dragStartTarget = new THREE.Vector3();
+
+    // --- 遊戲變數 ---
+    const UNIT_HP = 100;
+    const MOVE_RANGE = 5;
+    const TEAM_PLAYER = 'player';
+    const TEAM_ENEMY = 'enemy';
+    let units = [];
+    let currentTurn = TEAM_PLAYER;
+    let selectedUnit = null;
+    let originalPos = null;
+    let gameState = 'TRANSITION';
+    let turnCount = 1;
+    let gridHeights = []; 
+    let isHPVisible = false;
+
+    // --- 音效 ---
+    let isBGMEnabled = true;
+    let masterVolume = 0.7; 
+    const sfxAttack = new Audio('sounds/attack.mp3');
+    const sfxLaser = new Audio('sounds/laser.mp3');
+    const sfxExplosion = new Audio('sounds/explosion.mp3');
+    const bgmPlayer = new Audio('sounds/player.mp3'); bgmPlayer.loop = true; 
+    const bgmEnemy = new Audio('sounds/enemy.mp3'); bgmEnemy.loop = true; 
+    let currentBGM = null;
+
+    // --- 系統控制 ---
+
+    function toggleHPBars() {
+        const checkbox = document.getElementById('hp-toggle');
+        isHPVisible = checkbox.checked;
+        const allBars = document.querySelectorAll('.hp-overlay');
+        allBars.forEach(el => {
+            el.style.display = isHPVisible ? 'block' : 'none';
+        });
+    }
+
+    function updateMapPosition() {
+        const x = parseFloat(document.getElementById('map-pan-x').value);
+        const z = parseFloat(document.getElementById('map-pan-z').value);
+        cameraTarget.x = x;
+        cameraTarget.z = z;
+        updateSystemSettings();
+    }
+
+    function updateSystemSettings() {
+        if (!camera) return;
+        const lightVal = parseFloat(document.getElementById('light-slider').value);
+        if(ambientLight) ambientLight.intensity = lightVal;
+
+        const angle = parseFloat(document.getElementById('cam-rotate').value);
+        const height = parseFloat(document.getElementById('cam-height').value);
+        const radius = parseFloat(document.getElementById('cam-zoom').value);
+
+        const rad = (angle + 90) * Math.PI / 180;
+
+        const offsetX = Math.cos(rad) * radius;
+        const offsetZ = Math.sin(rad) * radius;
+
+        camera.position.x = cameraTarget.x + offsetX;
+        camera.position.z = cameraTarget.z + offsetZ;
+        camera.position.y = height;
+        
+        camera.lookAt(cameraTarget);
+    }
+
+    function resetCamera(mode) {
+        let newX = 0, newZ = 0;
+        if (mode === 'north') {
+            document.getElementById('cam-rotate').value = 0;
+            document.getElementById('cam-height').value = 200;
+            document.getElementById('cam-zoom').value = 140; 
+            document.getElementById('light-slider').value = 2.0; 
+            newX = 30; newZ = 15; 
+        } else if (mode === 'topdown') {
+            document.getElementById('cam-rotate').value = 0;
+            document.getElementById('cam-height').value = 500;
+            document.getElementById('cam-zoom').value = 10;
+            newX = 0; newZ = 0;
+        }
+        
+        cameraTarget.set(newX, 0, newZ);
+        document.getElementById('map-pan-x').value = newX;
+        document.getElementById('map-pan-z').value = newZ;
+        
+        updateSystemSettings();
+    }
+
+    function toggleBGM() {
+        const checkbox = document.getElementById('bgm-toggle');
+        isBGMEnabled = checkbox.checked;
+        if (!isBGMEnabled && currentBGM) {
+            currentBGM.pause();
+        } else if (isBGMEnabled && currentBGM) {
+            currentBGM.play().catch(e=>{});
+        }
+    }
+
+    function updateAudioVolume() {
+        const val = parseFloat(document.getElementById('vol-slider').value);
+        masterVolume = val;
+        bgmPlayer.volume = masterVolume;
+        bgmEnemy.volume = masterVolume;
+        sfxAttack.volume = masterVolume;
+        sfxLaser.volume = masterVolume;
+        sfxExplosion.volume = masterVolume;
+        if(currentBGM) currentBGM.volume = masterVolume;
+    }
+
+    function playSound(audio) {
+        audio.volume = masterVolume; 
+        audio.currentTime = 0;
+        audio.play().catch(e=>{});
+    }
+
+    function switchBGM(type) {
+        if (currentBGM) {
+            currentBGM.pause();
+            currentBGM.currentTime = 0;
+        }
+        if (type === 'player') currentBGM = bgmPlayer;
+        else if (type === 'enemy') currentBGM = bgmEnemy;
+        else currentBGM = null;
+
+        if (isBGMEnabled && currentBGM) {
+            currentBGM.volume = masterVolume;
+            currentBGM.play().catch(e=>{});
+        }
+    }
+
+    // --- 3D 初始化 ---
+    function initThreeJS() {
+        const container = document.getElementById('canvas-container');
+        if (renderer) return;
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x101010);
+        scene.fog = new THREE.Fog(0x101010, 100, 1000);
+
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 3000);
+        
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        ambientLight = new THREE.AmbientLight(0x808080, 1.5);
+        scene.add(ambientLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(100, 200, 50);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        raycaster = new THREE.Raycaster();
+        mouse = new THREE.Vector2();
+
+        window.addEventListener('resize', onWindowResize, false);
+        
+        const canvasEl = renderer.domElement;
+        canvasEl.addEventListener('pointerdown', onPointerDown, false);
+        window.addEventListener('pointermove', onPointerMove, false);
+        window.addEventListener('pointerup', onPointerUp, false);
+        canvasEl.addEventListener('wheel', onMouseWheel, { passive: false });
+
+        // 強制同步 UI
+        document.getElementById('map-pan-x').value = cameraTarget.x;
+        document.getElementById('map-pan-z').value = cameraTarget.z;
+        document.getElementById('cam-rotate').value = 0;
+        document.getElementById('cam-zoom').value = 140;
+        document.getElementById('light-slider').value = 2.0;
+        document.getElementById('cam-height').value = 200;
+        document.getElementById('vol-slider').value = 0.7;
+        document.getElementById('hp-toggle').checked = false;
+        isHPVisible = false;
+
+        updateSystemSettings();
+        updateAudioVolume();
+        animate();
+    }
+
+    // --- 滾輪縮放 ---
+    function onMouseWheel(event) {
+        event.preventDefault();
+        const zoomInput = document.getElementById('cam-zoom');
+        let val = parseFloat(zoomInput.value);
+        const sensitivity = 0.2; 
+        val += event.deltaY * sensitivity;
+        if (val < parseFloat(zoomInput.min)) val = parseFloat(zoomInput.min);
+        if (val > parseFloat(zoomInput.max)) val = parseFloat(zoomInput.max);
+        zoomInput.value = val;
+        updateSystemSettings();
+    }
+
+    // --- 滑鼠拖曳邏輯 ---
+    function onPointerDown(event) {
+        if (event.target.closest('#ui-panel') || event.target.closest('#action-menu')) return;
+        isDraggingMap = false;
+        dragStartPoint.x = event.clientX;
+        dragStartPoint.y = event.clientY;
+        dragStartTarget.copy(cameraTarget);
+    }
+
+    function onPointerMove(event) {
+        if (event.buttons > 0) {
+            const dx = event.clientX - dragStartPoint.x;
+            const dy = event.clientY - dragStartPoint.y;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                isDraggingMap = true;
+                document.getElementById('canvas-container').style.cursor = 'grabbing';
+            }
+            if (isDraggingMap) {
+                const angle = parseFloat(document.getElementById('cam-rotate').value);
+                const rad = (angle + 90) * Math.PI / 180;
+                const zoom = parseFloat(document.getElementById('cam-zoom').value);
+                const speed = 0.002 * (zoom / 200);
+                const fwdX = -Math.cos(rad);
+                const fwdZ = -Math.sin(rad);
+                const rightX = -Math.sin(rad); 
+                const rightZ = Math.cos(rad);
+                
+                cameraTarget.x = dragStartTarget.x - (rightX * dx + fwdX * -dy) * speed;
+                cameraTarget.z = dragStartTarget.z - (rightZ * dx + fwdZ * -dy) * speed;
+                
+                document.getElementById('map-pan-x').value = cameraTarget.x;
+                document.getElementById('map-pan-z').value = cameraTarget.z;
+
+                updateSystemSettings();
+            }
+        }
+    }
+
+    function onPointerUp(event) {
+        if (event.target.closest('#ui-panel') || event.target.closest('#action-menu')) return;
+        document.getElementById('canvas-container').style.cursor = 'grab';
+        if (!isDraggingMap) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const allGrids = gridMeshes.flat();
+            const intersects = raycaster.intersectObjects(allGrids);
+            if (intersects.length > 0) {
+                const obj = intersects[0].object;
+                handleCellClick(obj.userData.x, obj.userData.y);
+            } else {
+                if (gameState === 'ACTION_SELECT') {
+                    const hasMoved = (selectedUnit.x !== originalPos.x || selectedUnit.y !== originalPos.y);
+                    if (!hasMoved) resetState();
+                }
+            }
+        }
+        isDraggingMap = false;
+    }
+
+    // 地圖生成
+    function createGridMap() {
+        gridMeshes.forEach(row => row.forEach(mesh => scene.remove(mesh)));
+        gridMeshes = [];
+        gridHeights = [];
+
+        const theme = Math.floor(Math.random() * 3);
+        let themeName = "";
+        if(theme === 0) themeName = "Cyber (預設)";
+        if(theme === 1) themeName = "City (城市)";
+        if(theme === 2) themeName = "Nature (自然)";
+        log(`地圖主題: ${themeName}`, 'system');
+
+        for (let y = 0; y < BOARD_SIZE; y++) {
+            gridMeshes[y] = [];
+            gridHeights[y] = [];
+            for (let x = 0; x < BOARD_SIZE; x++) {
+                let color, height = 2;
+                if (theme === 0) { 
+                    color = (x + y) % 2 === 0 ? 0x3a3a3a : 0x444444;
+                } else if (theme === 1) { 
+                    const r = Math.random();
+                    if (r > 0.85) { height = 8 + Math.random() * 15; color = 0x888899; }
+                    else if (r > 0.7) { height = 4 + Math.random() * 4; color = 0x666677; }
+                    else { color = 0x333333; }
+                } else if (theme === 2) { 
+                    const r = Math.random();
+                    if (r > 0.8) { height = 4 + Math.random() * 6; color = 0x8b5a2b; }
+                    else if (r > 0.6) { color = 0x228b22; }
+                    else if (r > 0.4) { color = 0x32cd32; }
+                    else { height = 1; color = 0x1e90ff; }
+                }
+                const geometry = new THREE.BoxGeometry(TILE_SIZE * 0.95, height, TILE_SIZE * 0.95);
+                const material = new THREE.MeshLambertMaterial({ color: color });
+                const cube = new THREE.Mesh(geometry, material);
+                const wx = x * TILE_SIZE + WORLD_OFFSET_X;
+                const wz = y * TILE_SIZE + WORLD_OFFSET_Z;
+                cube.position.set(wx, height / 2 - 1, wz); 
+                const topY = height - 1; 
+                cube.userData = { x: x, y: y, originalColor: color, topY: topY };
+                cube.receiveShadow = true;
+                if(height > 2) cube.castShadow = true;
+                scene.add(cube);
+                gridMeshes[y][x] = cube;
+                gridHeights[y][x] = topY;
+            }
+        }
+    }
+
+    function logicalToWorld(x, y) {
+        const wx = x * TILE_SIZE + WORLD_OFFSET_X;
+        const wz = y * TILE_SIZE + WORLD_OFFSET_Z;
+        const groundY = gridHeights[y][x]; 
+        return { x: wx, y: groundY + 4, z: wz };
+    }
+
+    function toScreenPosition(obj, offsetX = 0, offsetY = 0) {
+        const vector = new THREE.Vector3();
+        obj.updateMatrixWorld();
+        vector.setFromMatrixPosition(obj.matrixWorld);
+        vector.y += 6;
+        vector.project(camera);
+        const x = (vector.x * .5 + .5) * window.innerWidth + offsetX;
+        const y = -(vector.y * .5 - .5) * window.innerHeight + offsetY;
+        return { x: x, y: y };
+    }
+
+    // --- 遊戲邏輯 ---
+
+    function initGame() {
+        initThreeJS();
+        createGridMap();
+
+        units = [];
+        for (let id in unitMeshes) {
+            scene.remove(unitMeshes[id]);
+            const hp = document.getElementById(`hp-container-${id}`);
+            if(hp) hp.remove();
+        }
+        unitMeshes = {};
+        
+        turnCount = 1;
+        document.getElementById('turn-count').innerText = 1;
+        document.getElementById('log').innerHTML = '';
+        
+        const pY = BOARD_SIZE - 1;
+        createUnit(TEAM_PLAYER, 0, pY);
+        createUnit(TEAM_PLAYER, 1, pY);
+        createUnit(TEAM_PLAYER, 2, pY);
+        createUnit(TEAM_PLAYER, 0, pY - 1);
+        createUnit(TEAM_PLAYER, 1, pY - 1);
+
+        const eX = BOARD_SIZE - 1;
+        createUnit(TEAM_ENEMY, eX, 0);
+        createUnit(TEAM_ENEMY, eX - 1, 0);
+        createUnit(TEAM_ENEMY, eX - 2, 0);
+        createUnit(TEAM_ENEMY, eX, 1);
+        createUnit(TEAM_ENEMY, eX - 1, 1);
+
+        switchBGM('player');
+        showTurnBanner("PLAYER PHASE", "#4da6ff", 'IDLE');
+    }
+
+    function createUnit(team, x, y) {
+        let unit = {
+            id: 'u_' + Math.random().toString(36).substr(2, 9),
+            team: team, x: x, y: y, hp: UNIT_HP, maxHp: UNIT_HP, hasActed: false
+        };
+        units.push(unit);
+        renderUnit3D(unit);
+    }
+
+    function renderUnit3D(unit) {
+        if (unit.hp <= 0) {
+            if (unitMeshes[unit.id]) { scene.remove(unitMeshes[unit.id]); delete unitMeshes[unit.id]; }
+            const hpEl = document.getElementById(`hp-container-${unit.id}`); if(hpEl) hpEl.remove(); return; 
+        }
+
+        let mesh = unitMeshes[unit.id];
+        if (!mesh) {
+            const geometry = new THREE.CylinderGeometry(3, 3, 8, 16);
+            const color = unit.team === TEAM_PLAYER ? 0x4da6ff : 0xff4d4d;
+            const material = new THREE.MeshPhongMaterial({ color: color });
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            
+            const pos = logicalToWorld(unit.x, unit.y);
+            mesh.position.set(pos.x, pos.y, pos.z);
+            scene.add(mesh);
+            unitMeshes[unit.id] = mesh;
+            createHPBar(unit);
+        }
+        if (unit.hasActed) { mesh.material.color.setHex(0x555555); } 
+        else { mesh.material.color.setHex(unit.team === TEAM_PLAYER ? 0x4da6ff : 0xff4d4d); }
+        updateHPBar(unit);
+    }
+
+    function createHPBar(unit) {
+        const container = document.createElement('div');
+        container.className = 'overlay-label hp-overlay'; 
+        container.id = `hp-container-${unit.id}`;
+        container.style.display = isHPVisible ? 'block' : 'none'; 
+        container.innerHTML = `<div class="hp-bar-container"><div class="hp-bar-fill" id="hp-fill-${unit.id}"></div></div>`;
+        document.getElementById('overlay-container').appendChild(container);
+    }
+
+    function updateHPBar(unit) {
+        const fillEl = document.getElementById(`hp-fill-${unit.id}`);
+        if (fillEl) {
+            const pct = (unit.hp / unit.maxHp) * 100;
+            fillEl.style.width = pct + '%';
+            if (pct > 50) fillEl.style.background = '#0f0'; else if (pct > 20) fillEl.style.background = '#ff0'; else fillEl.style.background = '#f00';
+        }
+    }
+
+    function moveUnit3D(unit, tx, ty) {
+        return new Promise(resolve => {
+            const mesh = unitMeshes[unit.id]; const targetPos = logicalToWorld(tx, ty);
+            const tl = gsap.timeline({ onComplete: () => { unit.x = tx; unit.y = ty; resolve(); }});
+            tl.to(mesh.position, { x: targetPos.x, z: targetPos.z, y: targetPos.y, duration: 0.5, ease: "power2.inOut" });
+        });
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        units.forEach(u => {
+            if (u.hp > 0 && unitMeshes[u.id]) {
+                const screenPos = toScreenPosition(unitMeshes[u.id], 0, 30);
+                const el = document.getElementById(`hp-container-${u.id}`);
+                if (el) { el.style.left = screenPos.x + 'px'; el.style.top = screenPos.y + 'px'; }
+            }
+        });
+        renderer.render(scene, camera);
+    }
+
+    function getUnitAt(x, y) { return units.find(u => u.x === x && u.y === y && u.hp > 0); }
+    function getDistance(u1, u2) { return Math.abs(u1.x - u2.x) + Math.abs(u1.y - u2.y); }
+    function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+    function clearHighlights() {
+        for(let y=0; y<BOARD_SIZE; y++) { for(let x=0; x<BOARD_SIZE; x++) {
+                const mesh = gridMeshes[y][x]; mesh.material.color.setHex(mesh.userData.originalColor); mesh.material.emissive.setHex(0x000000);
+        }}
+    }
+
+    function highlightGrid(x, y, type) {
+        if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return;
+        const mesh = gridMeshes[y][x];
+        // [回復] 移動範圍顏色改回綠色 (0x00aa00)
+        if (type === 'move') mesh.material.color.setHex(0x00aa00);
+        else if (type === 'attack') mesh.material.color.setHex(0xaa0000);
+        else if (type === 'select') mesh.material.emissive.setHex(0x555500);
+    }
+
+    function handleCellClick(x, y) {
+        if (gameState === 'TRANSITION' || gameState === 'AI_THINKING' || gameState === 'ANIMATING' || gameState === 'GAME_OVER') return;
+        const clickedUnit = getUnitAt(x, y);
+        if (gameState === 'ACTION_SELECT') {
+            const hasMoved = (selectedUnit.x !== originalPos.x || selectedUnit.y !== originalPos.y);
+            if (!hasMoved) { resetState(); return; }
+        }
+        if (gameState === 'IDLE') {
+            if (clickedUnit && clickedUnit.team === TEAM_PLAYER && !clickedUnit.hasActed) { openMenuForUnit(clickedUnit); } 
+            else if (clickedUnit) { showUnitStats(clickedUnit); }
+            return;
+        }
+        if (gameState === 'MOVING') {
+            if (x === selectedUnit.x && y === selectedUnit.y) { commitMove(x, y); return; }
+            const mesh = gridMeshes[y][x];
+            // [回復] 判定邏輯中的顏色檢查改回綠色
+            if (mesh.material.color.getHex() === 0x00aa00) { commitMove(x, y); } else { cancelMovePhase(); }
+            return;
+        }
+        if (gameState === 'TARGETING') {
+            const mesh = gridMeshes[y][x];
+            if (mesh.material.color.getHex() === 0xaa0000 && clickedUnit && clickedUnit.team === TEAM_ENEMY) { executeAttack(selectedUnit, clickedUnit); } 
+            else { backToActionMenu(); }
+        }
+    }
+
+    function openMenuForUnit(unit) {
+        selectedUnit = unit; originalPos = { x: unit.x, y: unit.y }; gameState = 'ACTION_SELECT';
+        clearHighlights(); highlightGrid(unit.x, unit.y, 'select'); showUnitStats(unit); updateMenuButtons(); showActionMenu3D(unit);
+    }
+
+    function activateMovePhase() {
+        document.getElementById('action-menu').style.display = 'none'; gameState = 'MOVING'; const range = MOVE_RANGE;
+        for (let dy = -range; dy <= range; dy++) { for (let dx = -range; dx <= range; dx++) {
+                if (Math.abs(dx) + Math.abs(dy) > range) continue;
+                let tx = selectedUnit.x + dx; let ty = selectedUnit.y + dy;
+                if (tx >= 0 && tx < BOARD_SIZE && ty >= 0 && ty < BOARD_SIZE) {
+                    if (!getUnitAt(tx, ty) || (tx === selectedUnit.x && ty === selectedUnit.y)) { highlightGrid(tx, ty, 'move'); }
+                }
+        }}
+    }
+
+    async function commitMove(x, y) {
+        gameState = 'ANIMATING'; await moveUnit3D(selectedUnit, x, y);
+        gameState = 'ACTION_SELECT'; clearHighlights(); highlightGrid(x, y, 'select'); updateMenuButtons(); showActionMenu3D(selectedUnit);
+    }
+
+    function showActionMenu3D(unit) {
+        const mesh = unitMeshes[unit.id]; const screenPos = toScreenPosition(mesh, 100, 0);
+        const menu = document.getElementById('action-menu'); menu.style.display = 'block'; menu.style.opacity = '0';
+        const menuHeight = menu.offsetHeight; let top = screenPos.y;
+        if (top + menuHeight > window.innerHeight) top = window.innerHeight - menuHeight - 10; if (top < 0) top = 10;
+        let left = screenPos.x; if (left + 200 > window.innerWidth) left = screenPos.x - 250;
+        menu.style.left = left + 'px'; menu.style.top = top + 'px'; menu.style.opacity = '1';
+    }
+
+    function cancelMovePhase() { openMenuForUnit(selectedUnit); }
+    async function cancelMove() {
+        if (selectedUnit && originalPos) {
+            selectedUnit.x = originalPos.x; selectedUnit.y = originalPos.y;
+            const mesh = unitMeshes[selectedUnit.id]; const pos = logicalToWorld(originalPos.x, originalPos.y);
+            mesh.position.set(pos.x, pos.y, pos.z); 
+        } openMenuForUnit(selectedUnit);
+    }
+
+    function updateMenuButtons() {
+        let hasMelee = false; let hasRange = false; const hasMoved = (selectedUnit.x !== originalPos.x || selectedUnit.y !== originalPos.y);
+        units.forEach(target => {
+            if (target.team !== TEAM_ENEMY || target.hp <= 0) return;
+            const dist = getDistance(selectedUnit, target);
+            if (dist === 1) hasMelee = true; if (dist >= 2 && dist <= 4) hasRange = true;
+        });
+        const btnMove = document.getElementById('btn-move'); const btnCancel = document.getElementById('btn-cancel');
+        const btnMelee = document.getElementById('btn-melee'); const btnRange = document.getElementById('btn-range');
+        if (hasMoved) { btnMove.disabled = true; btnCancel.style.display = 'block'; btnRange.disabled = true; } 
+        else { btnMove.disabled = false; btnCancel.style.display = 'none'; btnRange.disabled = !hasRange; }
+        btnMelee.disabled = !hasMelee;
+    }
+
+    function selectWeapon(type) {
+        currentWeapon = type; gameState = 'TARGETING'; document.getElementById('action-menu').style.display = 'none';
+        const minR = type === 'melee' ? 1 : 2; const maxR = type === 'melee' ? 1 : 4;
+        clearHighlights(); highlightGrid(selectedUnit.x, selectedUnit.y, 'select');
+        units.forEach(target => {
+            if (target.team !== TEAM_ENEMY || target.hp <= 0) return;
+            const dist = getDistance(selectedUnit, target);
+            if (dist >= minR && dist <= maxR) { highlightGrid(target.x, target.y, 'attack'); }
+        });
+    }
+
+    function backToActionMenu() { gameState = 'ACTION_SELECT'; clearHighlights(); highlightGrid(selectedUnit.x, selectedUnit.y, 'select'); updateMenuButtons(); showActionMenu3D(selectedUnit); }
+    async function performSingleAttack(source, target, weaponType, isCounter) {
+        clearHighlights();
+        let minDmg, maxDmg, minHit, maxHit, wName;
+        if (weaponType === 'melee') { minDmg = 50; maxDmg = 70; minHit = 60; maxHit = 70; wName = "格鬥"; } 
+        else { minDmg = 40; maxDmg = 60; minHit = 50; maxHit = 60; wName = "射擊"; }
+        let hitChance = Math.floor(Math.random() * (maxHit - minHit + 1)) + minHit;
+        let isHit = Math.floor(Math.random() * 100) < hitChance;
+        let damage = isHit ? Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg : 0;
+        const teamName = source.team === TEAM_PLAYER ? '我方' : '敵方'; const actionName = isCounter ? '反擊' : '攻擊'; const logStyle = isCounter ? 'log-counter' : 'normal';
+        log(`${teamName} ${actionName} (${wName})! (命中:${hitChance}%)`, logStyle);
+        const sMesh = unitMeshes[source.id]; const tMesh = unitMeshes[target.id];
+        await sleep(200);
+        if (weaponType === 'melee') {
+            playSound(sfxAttack); showSwordIcon(source);
+            const originalPos = sMesh.position.clone(); const targetPos = tMesh.position.clone();
+            const lungePos = targetPos.clone().lerp(originalPos, 0.2); 
+            await new Promise(r => { gsap.to(sMesh.position, { x: lungePos.x, z: lungePos.z, y: lungePos.y, duration: 0.15, yoyo: true, repeat: 1, onComplete: r }); });
+        } else {
+            playSound(sfxLaser); showLaser3D(sMesh.position, tMesh.position); await sleep(300);
+        }
+        if (isHit) {
+            showPopup(target, "-" + damage, "damage"); gsap.to(tMesh.position, { x: "+=2", duration: 0.05, yoyo: true, repeat: 5 });
+            await sleep(500); target.hp -= damage; log(`命中! 傷害 <span class="log-damage">${damage}</span>`, 'normal'); updateHPBar(target);
+        } else {
+            showPopup(target, "MISS", "miss"); log(`MISS!`, 'log-miss'); await sleep(500);
+        }
+    }
+
+    async function executeAttack(attacker, defender) {
+        gameState = 'ANIMATING'; await performSingleAttack(attacker, defender, currentWeapon, false);
+        if (defender.hp <= 0) { handleDeath(defender); } 
+        else {
+            const dist = getDistance(attacker, defender); let counterWeapon = null;
+            if (dist === 1) counterWeapon = 'melee'; else if (dist >= 2 && dist <= 4) counterWeapon = 'range';
+            if (counterWeapon) { await sleep(500); await performSingleAttack(defender, attacker, counterWeapon, true); if (attacker.hp <= 0) handleDeath(attacker); } 
+            else { log("距離過遠，無法反擊。", "normal"); }
+        } finishAction();
+    }
+
+    function showLaser3D(start, end) {
+        const material = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 3 });
+        const points = []; points.push(new THREE.Vector3(start.x, start.y + 2, start.z)); points.push(new THREE.Vector3(end.x, end.y + 2, end.z));
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(geometry, material);
+        scene.add(line); setTimeout(() => scene.remove(line), 200);
+    }
+
+    function showPopup(unit, text, type) {
+        const mesh = unitMeshes[unit.id]; const screenPos = toScreenPosition(mesh, 0, -30);
+        const el = document.createElement('div'); el.className = type === 'damage' ? 'damage-popup overlay-label' : 'miss-popup overlay-label';
+        el.innerText = text; el.style.left = screenPos.x + 'px'; el.style.top = screenPos.y + 'px';
+        document.getElementById('overlay-container').appendChild(el); setTimeout(() => el.remove(), 1000);
+    }
+
+    function showSwordIcon(unit) {
+        const mesh = unitMeshes[unit.id]; const screenPos = toScreenPosition(mesh, 0, -40);
+        const el = document.createElement('div'); el.className = 'sword-icon-popup overlay-label'; el.innerText = "⚔️";
+        el.style.left = screenPos.x + 'px'; el.style.top = screenPos.y + 'px';
+        document.getElementById('overlay-container').appendChild(el); setTimeout(() => el.remove(), 600);
+    }
+
+    function triggerExplosion(unit) {
+        const mesh = unitMeshes[unit.id]; const pos = mesh.position;
+        const particleGeo = new THREE.BoxGeometry(1, 1, 1); const particleMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+        for(let i=0; i<20; i++) {
+            const p = new THREE.Mesh(particleGeo, particleMat); p.position.copy(pos); scene.add(p);
+            gsap.to(p.position, { x: pos.x + (Math.random()-0.5)*30, y: pos.y + (Math.random()-0.5)*30, z: pos.z + (Math.random()-0.5)*30, duration: 0.8, onComplete: () => scene.remove(p) });
+            gsap.to(p.scale, { x: 0, y: 0, z: 0, duration: 0.8 });
+        }
+    }
+
+    function handleDeath(unit) {
+        triggerExplosion(unit); playSound(sfxExplosion); const mesh = unitMeshes[unit.id]; scene.remove(mesh); delete unitMeshes[unit.id];
+        const hpEl = document.getElementById(`hp-container-${unit.id}`); if(hpEl) hpEl.remove(); log(`*** 擊墜 ***`, 'log-damage'); checkWinCondition(); 
+    }
+
+    function waitAction() { finishAction(); }
+    function finishAction() { if (selectedUnit && selectedUnit.hp > 0) { selectedUnit.hasActed = true; renderUnit3D(selectedUnit); } resetState(); }
+    function resetState() {
+        if (gameState === 'GAME_OVER') return;
+        if (currentTurn === TEAM_ENEMY) gameState = 'AI_THINKING'; else gameState = 'IDLE';
+        selectedUnit = null; originalPos = null; clearHighlights();
+        document.getElementById('action-menu').style.display = 'none'; document.getElementById('stats-content').innerHTML = '請選擇機體';
+    }
+
+    function showTurnBanner(text, color, nextState) {
+        gameState = 'TRANSITION'; document.getElementById('action-menu').style.display = 'none'; clearHighlights();
+        const banner = document.getElementById('turn-banner'); banner.innerText = text; banner.style.color = color; banner.style.borderTopColor = color; banner.style.borderBottomColor = color;
+        banner.style.left = '0%';
+        setTimeout(() => { banner.style.left = '100%';
+            setTimeout(() => { banner.style.transition = 'none'; banner.style.left = '-100%';
+                setTimeout(() => { banner.style.transition = 'left 0.5s ease-out'; gameState = nextState; if (gameState === 'AI_THINKING') runAITurn(); }, 50);
+            }, 500);
+        }, 1500);
+    }
+
+    function endTurn() {
+        if (gameState !== 'IDLE') return; if (selectedUnit) cancelMove();
+        currentTurn = TEAM_ENEMY; document.getElementById('turn-text').innerText = "敵方回合"; document.getElementById('turn-text').style.color = "#ff4d4d"; document.getElementById('btn-end-turn').disabled = true;
+        units.filter(u => u.team === TEAM_PLAYER).forEach(u => { u.hasActed = false; renderUnit3D(u); });
+        switchBGM('enemy'); showTurnBanner("ENEMY PHASE", "#ff4d4d", 'AI_THINKING');
+    }
+
+    function startPlayerTurn() {
+        currentTurn = TEAM_PLAYER; turnCount++; document.getElementById('turn-count').innerText = turnCount; 
+        document.getElementById('turn-text').innerText = "玩家回合"; document.getElementById('turn-text').style.color = "#4da6ff"; document.getElementById('btn-end-turn').disabled = false;
+        units.filter(u => u.team === TEAM_ENEMY).forEach(u => { u.hasActed = false; renderUnit3D(u); });
+        log(`--- 玩家回合 (Turn ${turnCount}) ---`, "system");
+        switchBGM('player'); showTurnBanner("PLAYER PHASE", "#4da6ff", 'IDLE');
+    }
+
+    async function runAITurn() {
+        const enemies = units.filter(u => u.team === TEAM_ENEMY && u.hp > 0);
+        for (const enemy of enemies) {
+            if (gameState === 'GAME_OVER') return; showUnitStats(enemy); await sleep(600); 
+            let target = null; let minDist = 9999; const players = units.filter(u => u.team === TEAM_PLAYER && u.hp > 0);
+            if (players.length === 0) break; players.forEach(p => { const d = getDistance(enemy, p); if (d < minDist) { minDist = d; target = p; } });
+            let dist = getDistance(enemy, target);
+            if (dist >= 2 && dist <= 4) { selectedUnit = enemy; currentWeapon = 'range'; await executeAttack(enemy, target); continue; }
+            let bestX = enemy.x, bestY = enemy.y; let minMoveDist = 9999;
+            for (let dy = -MOVE_RANGE; dy <= MOVE_RANGE; dy++) { for (let dx = -MOVE_RANGE; dx <= MOVE_RANGE; dx++) {
+                    if (Math.abs(dx) + Math.abs(dy) > MOVE_RANGE) continue;
+                    let tx = enemy.x + dx; let ty = enemy.y + dy;
+                    if (tx < 0 || tx >= BOARD_SIZE || ty < 0 || ty >= BOARD_SIZE) continue;
+                    if (getUnitAt(tx, ty) && (tx!==enemy.x || ty!==enemy.y)) continue;
+                    let distToTarget = Math.abs(tx - target.x) + Math.abs(ty - target.y); let score = Math.abs(distToTarget - 1); 
+                    if (score < minMoveDist) { minMoveDist = score; bestX = tx; bestY = ty; }
+            }}
+            selectedUnit = enemy; gameState = 'ANIMATING'; await moveUnit3D(enemy, bestX, bestY); await sleep(200);
+            let newDist = getDistance(enemy, target);
+            if (newDist === 1) { currentWeapon = 'melee'; await executeAttack(enemy, target); } else { enemy.hasActed = true; renderUnit3D(enemy); }
+        }
+        if (gameState !== 'GAME_OVER') { await sleep(500); startPlayerTurn(); }
+    }
+
+    function checkWinCondition() {
+        const players = units.filter(u => u.team === TEAM_PLAYER && u.hp > 0); const enemies = units.filter(u => u.team === TEAM_ENEMY && u.hp > 0);
+        let msg = "", isOver = false; if (enemies.length === 0) { msg = "VICTORY! 敵軍全滅！"; isOver = true; } else if (players.length === 0) { msg = "DEFEAT... 我軍全滅。"; isOver = true; }
+        if (isOver) {
+            gameState = 'GAME_OVER'; switchBGM(null); document.getElementById('turn-indicator').style.display = 'none'; document.getElementById('btn-end-turn').style.display = 'none'; document.getElementById('btn-restart').style.display = 'block';
+            log(`=== ${msg} ===`, 'log-system'); const banner = document.getElementById('turn-banner');
+            banner.innerText = msg; banner.style.color = enemies.length === 0 ? "#4da6ff" : "#ff4d4d"; banner.style.left = '0%'; return true;
+        } return false;
+    }
+    function restartGame() { 
+        // 修正重啟按鈕邏輯
+        document.getElementById('turn-indicator').style.display = 'block';
+        document.getElementById('btn-end-turn').style.display = 'block';
+        document.getElementById('btn-restart').style.display = 'none';
+        document.getElementById('btn-end-turn').disabled = false;
+        const banner = document.getElementById('turn-banner'); 
+        banner.style.left = '-100%'; 
+        initGame(); 
+    }
+    function log(msg, type) {
+        const logEl = document.getElementById('log'); const entry = document.createElement('div');
+        entry.className = `log-entry ${type === 'system' ? 'log-system' : ''} ${type === 'log-miss' ? 'log-miss' : ''} ${type === 'log-counter' ? 'log-counter' : ''}`;
+        entry.innerHTML = msg; logEl.appendChild(entry); logEl.scrollTop = logEl.scrollHeight;
+    }
+    function showUnitStats(unit) {
+        const el = document.getElementById('stats-content'); const color = unit.team === TEAM_PLAYER ? '#4da6ff' : '#ff4d4d'; const name = unit.team === TEAM_PLAYER ? '我方機體 (P)' : '敵方機體 (E)';
+        el.innerHTML = `<div style="color:${color};font-size:18px;font-weight:bold;">${name}</div><div style="font-size:16px; margin: 5px 0;">HP: <span style="color:${unit.hp<40?'red':'white'}">${unit.hp}</span> / ${unit.maxHp}</div><div style="color:#aaa;">位置: (${unit.x}, ${unit.y})</div><div style="color:#aaa;">狀態: ${unit.hasActed ? '已行動' : '未行動'}</div>`;
+    }
+
+    initGame(); 
+</script>
+
+</body>
+</html>

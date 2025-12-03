@@ -1,0 +1,17 @@
+{
+  "name": "srw-web-game",
+  "version": "1.0.0",
+  "description": "My SRW Game",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-packager . MySRWGame --platform=win32 --arch=x64 --overwrite"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-packager": "^17.1.2"
+  }
+}
