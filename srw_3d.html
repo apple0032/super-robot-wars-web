@@ -40,6 +40,16 @@
             pointer-events: auto; color: white; overflow-y: auto;
         }
 
+        /* [新增] Game Logo 樣式 */
+        .game-logo {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto 15px auto;
+            border-bottom: 2px solid #444;
+            padding-bottom: 10px;
+        }
+
         .control-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
         .control-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #ccc; }
         .control-row span { flex: 1; }
@@ -73,7 +83,7 @@
 
         .overlay-label { position: absolute; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; }
         .hp-bar-container { width: 40px; height: 6px; background: #333; border: 1px solid #000; }
-        .hp-bar-fill { height: 100%; background: #0f0; width: 100%; transition: width 0.2s; }
+        .hp-bar-fill { height: 100%; background: #0f0; width: 100%; transition: width 0.5s ease-out; }
 
         .damage-popup { color: #ff3333; font-size: 28px; font-weight: 900; text-shadow: 2px 2px 0px #000; animation: float-up 1s forwards; }
         .miss-popup { color: #4da6ff; font-size: 28px; font-weight: 900; text-shadow: 2px 2px 0px #000; animation: float-up 1s forwards; }
@@ -84,8 +94,12 @@
 
         h2, h3 { margin-top: 0; color: #ffd700; text-align: center;}
         .info-box { background: #333; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #444; }
-        .btn-end { background-color: #882d2d; text-align: center; font-weight: bold; margin-top: auto; padding: 15px; font-size: 18px; width: 100%; cursor: pointer; color: white; border: 1px solid #666; pointer-events: auto;}
+        
+        .btn-end { background-color: #3d6aa8; text-align: center; font-weight: bold; margin-top: auto; padding: 15px; font-size: 18px; width: 100%; cursor: pointer; color: white; border: 1px solid #666; pointer-events: auto; transition: background-color 0.3s; }
+        .btn-end:hover { background-color: #4a7bc0; } 
+        .btn-end:disabled { cursor: not-allowed; opacity: 0.8; }
         .btn-restart { background-color: #228b22; text-align: center; font-weight: bold; padding: 15px; font-size: 18px; display: none; margin-top: auto; width: 100%; cursor: pointer; color: white; border: 1px solid #666; pointer-events: auto;}
+        
         #log { flex: 1; background: #111; border: 1px solid #444; padding: 10px; overflow-y: auto; font-family: Consolas, monospace; font-size: 13px; color: #ddd; margin-bottom: 10px; border-radius: 4px; pointer-events: auto; }
         .log-entry { margin-bottom: 6px; border-bottom: 1px solid #222; padding-bottom: 2px; }
         .log-damage { color: #ff6b6b; font-weight: bold; }
@@ -109,19 +123,20 @@
 
     <div id="action-menu">
         <h3>行動指令</h3>
-        <button class="btn btn-move" id="btn-move" onclick="activateMovePhase()">🏃 移動</button>
-        <button class="btn btn-action" id="btn-melee" onclick="selectWeapon('melee')">⚔️ 格鬥 (射程1)<br><span style="font-size:11px;color:#ccc">傷害:50-70 | 命中:60-70%</span></button>
-        <button class="btn btn-action" id="btn-range" onclick="selectWeapon('range')">🔫 射擊 (射程2-4)<br><span style="font-size:11px;color:#ccc">傷害:40-60 | 命中:50-60%<br><span style="color:#ff6666">(移動後不可用)</span></span></button>
-        <button class="btn" onclick="waitAction()">✋ 待命</button>
-        <button class="btn btn-cancel" id="btn-cancel" onclick="cancelMove()">↩ 取消</button>
+        <button class="btn btn-move" id="btn-move" onclick="playClick(); activateMovePhase()">🏃 移動</button>
+        <button class="btn btn-action" id="btn-melee" onclick="playClick(); selectWeapon('melee')">⚔️ 格鬥 (射程1)<br><span style="font-size:11px;color:#ccc">傷害:50-70 | 命中:60-70%</span></button>
+        <button class="btn btn-action" id="btn-range" onclick="playClick(); selectWeapon('range')">🔫 射擊 (射程2-4)<br><span style="font-size:11px;color:#ccc">傷害:40-60 | 命中:50-60%<br><span style="color:#ff6666">(移動後不可用)</span></span></button>
+        <button class="btn" onclick="playClick(); waitAction()">✋ 待命</button>
+        <button class="btn btn-cancel" id="btn-cancel" onclick="playClick(); cancelMove()">↩ 取消</button>
     </div>
 
     <div id="ui-panel">
-        <h2>SRW 3D</h2>
+        <img src="assets/banner.png" class="game-logo" alt="SRW 3D">
+        
         <div class="info-box" id="turn-indicator">
-            回合: <span id="turn-text" style="color: #4da6ff; font-weight: bold;">玩家回合</span>
+            現在回合: <span id="turn-text" style="color: #4da6ff; font-weight: bold;">玩家回合</span>
             <div style="margin-top:8px; border-top:1px solid #555; padding-top:5px; font-size:16px; color:#fff;">
-                Turn: <span id="turn-count" style="color:#ffd700; font-weight:bold;">1</span>
+                回合數目: <span id="turn-count" style="color:#ffd700; font-weight:bold;">1</span>
             </div>
         </div>
         <div class="info-box" id="unit-stats">
@@ -131,63 +146,69 @@
         <div id="log"></div>
 
         <div class="info-box">
-            <h3 style="margin-bottom:10px;">系統設定</h3>
-            <div class="control-group">
-                <div class="control-row">
-                    <span>💡 亮度</span>
-                    <input type="range" id="light-slider" min="0.5" max="3" step="0.1" value="2.0" oninput="updateSystemSettings()">
+            <h3 id="settings-header" style="margin-bottom:10px; cursor: pointer; user-select: none;" onclick="toggleSettings()">▼ 系統設定</h3>
+            <div id="settings-body">
+                <div class="control-group">
+                    <div class="control-row">
+                        <span>💡 亮度</span>
+                        <input type="range" id="light-slider" min="0.5" max="3" step="0.1" value="2.0" oninput="updateSystemSettings()">
+                    </div>
+                    <div class="control-row">
+                        <span>🔍 縮放</span>
+                        <input type="range" id="cam-zoom" min="50" max="800" step="5" value="140" oninput="updateSystemSettings()">
+                    </div>
                 </div>
-                <div class="control-row">
-                    <span>🔍 縮放</span>
-                    <input type="range" id="cam-zoom" min="50" max="800" step="5" value="140" oninput="updateSystemSettings()">
+                <div class="control-group">
+                    <div class="control-row">
+                        <span>↔️ 地圖位置 X</span>
+                        <input type="range" id="map-pan-x" min="-500" max="500" step="0.1" value="30" oninput="updateMapPosition()">
+                    </div>
+                    <div class="control-row">
+                        <span>↕️ 地圖位置 Z</span>
+                        <input type="range" id="map-pan-z" min="-500" max="500" step="0.1" value="15" oninput="updateMapPosition()">
+                    </div>
                 </div>
-            </div>
-            <div class="control-group">
-                <div class="control-row">
-                    <span>↔️ 地圖位置 X</span>
-                    <input type="range" id="map-pan-x" min="-500" max="500" step="0.1" value="30" oninput="updateMapPosition()">
+                <div class="control-group">
+                    <div class="control-row">
+                        <span>🔄 旋轉</span>
+                        <input type="range" id="cam-rotate" min="0" max="360" step="1" value="0" oninput="updateSystemSettings()">
+                    </div>
+                    <div class="control-row">
+                        <button class="btn-small" onclick="resetCamera('north')">⬆️ 正北</button>
+                        <button class="btn-small" onclick="resetCamera('topdown')">🦅 鳥瞰</button>
+                    </div>
+                    <div class="control-row">
+                        <span>↕️ 高度</span>
+                        <input type="range" id="cam-height" min="50" max="600" step="10" value="200" oninput="updateSystemSettings()">
+                    </div>
                 </div>
-                <div class="control-row">
-                    <span>↕️ 地圖位置 Z</span>
-                    <input type="range" id="map-pan-z" min="-500" max="500" step="0.1" value="15" oninput="updateMapPosition()">
+                <div style="border-top:1px solid #555; margin: 5px 0;"></div>
+                <div class="control-group">
+                    <div class="control-row">
+                        <span>❤️ 血條顯示</span>
+                        <input type="checkbox" id="hp-toggle" onchange="toggleHPBars()">
+                    </div>
                 </div>
-            </div>
-            <div class="control-group">
-                <div class="control-row">
-                    <span>🔄 旋轉</span>
-                    <input type="range" id="cam-rotate" min="0" max="360" step="1" value="0" oninput="updateSystemSettings()">
-                </div>
-                <div class="control-row">
-                    <button class="btn-small" onclick="resetCamera('north')">⬆️ 正北</button>
-                    <button class="btn-small" onclick="resetCamera('topdown')">🦅 鳥瞰</button>
-                </div>
-                <div class="control-row">
-                    <span>↕️ 高度</span>
-                    <input type="range" id="cam-height" min="50" max="600" step="10" value="200" oninput="updateSystemSettings()">
-                </div>
-            </div>
-            <div style="border-top:1px solid #555; margin: 5px 0;"></div>
-            <div class="control-group">
-                <div class="control-row">
-                    <span>❤️ 血條顯示</span>
-                    <input type="checkbox" id="hp-toggle" onchange="toggleHPBars()">
-                </div>
-            </div>
-            <div style="border-top:1px solid #555; margin: 5px 0;"></div>
-            <div class="control-group">
-                <div class="control-row">
-                    <span>🎵 音樂</span>
-                    <input type="checkbox" id="bgm-toggle" checked onchange="toggleBGM()">
-                </div>
-                <div class="control-row">
-                    <span>🔊 音量</span>
-                    <input type="range" id="vol-slider" min="0" max="1" step="0.1" value="0.7" oninput="updateAudioVolume()">
+                <div style="border-top:1px solid #555; margin: 5px 0;"></div>
+                <div class="control-group">
+                    <div class="control-row">
+                        <span>🎵 音樂</span>
+                        <input type="checkbox" id="bgm-toggle" checked onchange="toggleBGM()">
+                    </div>
+                    <div class="control-row">
+                        <span>🔊 音效</span>
+                        <input type="checkbox" id="sfx-toggle" checked onchange="toggleSFX()">
+                    </div>
+                    <div class="control-row">
+                        <span>🔊 音量</span>
+                        <input type="range" id="vol-slider" min="0" max="1" step="0.1" value="0.7" oninput="updateAudioVolume()">
+                    </div>
                 </div>
             </div>
         </div>
 
-        <button class="btn-end" id="btn-end-turn" onclick="endTurn()">結束回合</button>
-        <button class="btn-restart" id="btn-restart" onclick="restartGame()">重新遊戲</button>
+        <button class="btn-end" id="btn-end-turn" onclick="playClick(); endTurn()">結束回合</button>
+        <button class="btn-restart" id="btn-restart" onclick="playClick(); restartGame()">重新遊戲</button>
     </div>
     
     <div id="overlay-container"></div>
@@ -204,7 +225,6 @@
     const WORLD_OFFSET_X = - (BOARD_SIZE * TILE_SIZE) / 2 + TILE_SIZE / 2;
     const WORLD_OFFSET_Z = - (BOARD_SIZE * TILE_SIZE) / 2 + TILE_SIZE / 2;
 
-    // 攝影機控制：初始值 X=30, Z=15
     let cameraTarget = new THREE.Vector3(30, 0, 15); 
     let isDraggingMap = false;
     let dragStartPoint = { x: 0, y: 0 };
@@ -226,23 +246,56 @@
 
     // --- 音效 ---
     let isBGMEnabled = true;
+    let isSFXEnabled = true; 
     let masterVolume = 0.7; 
     const sfxAttack = new Audio('sounds/attack.mp3');
     const sfxLaser = new Audio('sounds/laser.mp3');
     const sfxExplosion = new Audio('sounds/explosion.mp3');
+    const sfxClick = new Audio('sounds/click.mp3');
     const bgmPlayer = new Audio('sounds/player.mp3'); bgmPlayer.loop = true; 
     const bgmEnemy = new Audio('sounds/enemy.mp3'); bgmEnemy.loop = true; 
     let currentBGM = null;
 
     // --- 系統控制 ---
 
+    function playClick() {
+        if (!isSFXEnabled) return;
+        sfxClick.volume = masterVolume;
+        sfxClick.currentTime = 0;
+        sfxClick.play().catch(e=>{});
+    }
+
+    function toggleSettings() {
+        const body = document.getElementById('settings-body');
+        const header = document.getElementById('settings-header');
+        playClick();
+        if (body.style.display === 'none') {
+            body.style.display = 'block';
+            header.innerText = '▼ 系統設定';
+        } else {
+            body.style.display = 'none';
+            header.innerText = '▶ 系統設定';
+        }
+    }
+
     function toggleHPBars() {
         const checkbox = document.getElementById('hp-toggle');
         isHPVisible = checkbox.checked;
+        
         const allBars = document.querySelectorAll('.hp-overlay');
         allBars.forEach(el => {
-            el.style.display = isHPVisible ? 'block' : 'none';
+            if (isHPVisible) {
+                if(el.hideTimer) clearTimeout(el.hideTimer);
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'none';
+            }
         });
+    }
+
+    function toggleSFX() {
+        const checkbox = document.getElementById('sfx-toggle');
+        isSFXEnabled = checkbox.checked;
     }
 
     function updateMapPosition() {
@@ -275,6 +328,7 @@
     }
 
     function resetCamera(mode) {
+        playClick();
         let newX = 0, newZ = 0;
         if (mode === 'north') {
             document.getElementById('cam-rotate').value = 0;
@@ -314,10 +368,12 @@
         sfxAttack.volume = masterVolume;
         sfxLaser.volume = masterVolume;
         sfxExplosion.volume = masterVolume;
+        sfxClick.volume = masterVolume;
         if(currentBGM) currentBGM.volume = masterVolume;
     }
 
     function playSound(audio) {
+        if (!isSFXEnabled) return; 
         audio.volume = masterVolume; 
         audio.currentTime = 0;
         audio.play().catch(e=>{});
@@ -373,7 +429,6 @@
         window.addEventListener('pointerup', onPointerUp, false);
         canvasEl.addEventListener('wheel', onMouseWheel, { passive: false });
 
-        // 強制同步 UI
         document.getElementById('map-pan-x').value = cameraTarget.x;
         document.getElementById('map-pan-z').value = cameraTarget.z;
         document.getElementById('cam-rotate').value = 0;
@@ -382,7 +437,9 @@
         document.getElementById('cam-height').value = 200;
         document.getElementById('vol-slider').value = 0.7;
         document.getElementById('hp-toggle').checked = false;
+        document.getElementById('sfx-toggle').checked = true; 
         isHPVisible = false;
+        isSFXEnabled = true;
 
         updateSystemSettings();
         updateAudioVolume();
@@ -489,10 +546,10 @@
                     else { color = 0x333333; }
                 } else if (theme === 2) { 
                     const r = Math.random();
-                    if (r > 0.8) { height = 4 + Math.random() * 6; color = 0x8b5a2b; }
-                    else if (r > 0.6) { color = 0x228b22; }
-                    else if (r > 0.4) { color = 0x32cd32; }
-                    else { height = 1; color = 0x1e90ff; }
+                    if (r > 0.8) { height = 4 + Math.random() * 6; color = 0x4a331a; } 
+                    else if (r > 0.6) { color = 0x0d2b0d; } 
+                    else if (r > 0.4) { color = 0x1a331a; } 
+                    else { height = 1; color = 0x102545; } 
                 }
                 const geometry = new THREE.BoxGeometry(TILE_SIZE * 0.95, height, TILE_SIZE * 0.95);
                 const material = new THREE.MeshLambertMaterial({ color: color });
@@ -547,6 +604,23 @@
         document.getElementById('turn-count').innerText = 1;
         document.getElementById('log').innerHTML = '';
         
+        document.getElementById('turn-text').innerText = "玩家回合";
+        document.getElementById('turn-text').style.color = "#4da6ff";
+
+        const btnEnd = document.getElementById('btn-end-turn');
+        btnEnd.innerText = "結束回合";
+        btnEnd.style.backgroundColor = "#3d6aa8"; 
+        btnEnd.style.borderColor = "#5588cc";
+        btnEnd.disabled = false;
+
+        log("--- 玩家回合 (Turn 1) ---", "system");
+
+        selectedUnit = null;
+        originalPos = null;
+        currentTurn = TEAM_PLAYER;
+        isDraggingMap = false;
+        gameState = 'TRANSITION'; 
+
         const pY = BOARD_SIZE - 1;
         createUnit(TEAM_PLAYER, 0, pY);
         createUnit(TEAM_PLAYER, 1, pY);
@@ -596,6 +670,7 @@
         }
         if (unit.hasActed) { mesh.material.color.setHex(0x555555); } 
         else { mesh.material.color.setHex(unit.team === TEAM_PLAYER ? 0x4da6ff : 0xff4d4d); }
+        
         updateHPBar(unit);
     }
 
@@ -610,10 +685,43 @@
 
     function updateHPBar(unit) {
         const fillEl = document.getElementById(`hp-fill-${unit.id}`);
-        if (fillEl) {
-            const pct = (unit.hp / unit.maxHp) * 100;
-            fillEl.style.width = pct + '%';
-            if (pct > 50) fillEl.style.background = '#0f0'; else if (pct > 20) fillEl.style.background = '#ff0'; else fillEl.style.background = '#f00';
+        if (!fillEl) return;
+        const pct = Math.max(0, Math.min(100, (unit.hp / unit.maxHp) * 100));
+        fillEl.style.width = pct + '%';
+        if (pct > 50) fillEl.style.background = '#0f0';
+        else if (pct > 20) fillEl.style.background = '#ff0';
+        else fillEl.style.background = '#f00';
+    }
+
+    function animateHPChange(unit, oldHP, newHP) {
+        const container = document.getElementById(`hp-container-${unit.id}`);
+        const fillEl = document.getElementById(`hp-fill-${unit.id}`);
+        if (!container || !fillEl) return;
+
+        const oldPct = Math.max(0, Math.min(100, (oldHP / unit.maxHp) * 100));
+        const newPct = Math.max(0, Math.min(100, (newHP / unit.maxHp) * 100));
+
+        fillEl.style.transition = 'none';
+        fillEl.style.width = oldPct + '%';
+        
+        if(container.hideTimer) clearTimeout(container.hideTimer);
+        container.style.display = 'block';
+
+        void fillEl.offsetWidth;
+
+        fillEl.style.transition = 'width 0.5s ease-out';
+        fillEl.style.width = newPct + '%';
+        
+        if (newPct > 50) fillEl.style.background = '#0f0';
+        else if (newPct > 20) fillEl.style.background = '#ff0';
+        else fillEl.style.background = '#f00';
+
+        if (!isHPVisible) {
+            container.hideTimer = setTimeout(() => {
+                if (!isHPVisible) {
+                    container.style.display = 'none';
+                }
+            }, 1500); 
         }
     }
 
@@ -656,9 +764,9 @@
     function highlightGrid(x, y, type) {
         if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return;
         const mesh = gridMeshes[y][x];
-        // [回復] 移動範圍顏色改回綠色 (0x00aa00)
         if (type === 'move') mesh.material.color.setHex(0x00aa00);
         else if (type === 'attack') mesh.material.color.setHex(0xaa0000);
+        else if (type === 'range') mesh.material.color.setHex(0xcc8888);
         else if (type === 'select') mesh.material.emissive.setHex(0x555500);
     }
 
@@ -670,14 +778,19 @@
             if (!hasMoved) { resetState(); return; }
         }
         if (gameState === 'IDLE') {
-            if (clickedUnit && clickedUnit.team === TEAM_PLAYER && !clickedUnit.hasActed) { openMenuForUnit(clickedUnit); } 
-            else if (clickedUnit) { showUnitStats(clickedUnit); }
+            if (clickedUnit && clickedUnit.team === TEAM_PLAYER && !clickedUnit.hasActed) { 
+                playClick(); 
+                openMenuForUnit(clickedUnit); 
+            } 
+            else if (clickedUnit) { 
+                playClick(); 
+                showUnitStats(clickedUnit); 
+            }
             return;
         }
         if (gameState === 'MOVING') {
             if (x === selectedUnit.x && y === selectedUnit.y) { commitMove(x, y); return; }
             const mesh = gridMeshes[y][x];
-            // [回復] 判定邏輯中的顏色檢查改回綠色
             if (mesh.material.color.getHex() === 0x00aa00) { commitMove(x, y); } else { cancelMovePhase(); }
             return;
         }
@@ -685,6 +798,35 @@
             const mesh = gridMeshes[y][x];
             if (mesh.material.color.getHex() === 0xaa0000 && clickedUnit && clickedUnit.team === TEAM_ENEMY) { executeAttack(selectedUnit, clickedUnit); } 
             else { backToActionMenu(); }
+        }
+    }
+
+    function selectWeapon(type) {
+        currentWeapon = type;
+        gameState = 'TARGETING';
+        document.getElementById('action-menu').style.display = 'none';
+        const minR = type === 'melee' ? 1 : 2;
+        const maxR = type === 'melee' ? 1 : 4;
+
+        clearHighlights();
+        highlightGrid(selectedUnit.x, selectedUnit.y, 'select');
+
+        for (let dy = -maxR; dy <= maxR; dy++) {
+            for (let dx = -maxR; dx <= maxR; dx++) {
+                const dist = Math.abs(dx) + Math.abs(dy);
+                if (dist >= minR && dist <= maxR) {
+                    const tx = selectedUnit.x + dx;
+                    const ty = selectedUnit.y + dy;
+                    if (tx >= 0 && tx < BOARD_SIZE && ty >= 0 && ty < BOARD_SIZE) {
+                        const target = getUnitAt(tx, ty);
+                        if (target && target.team === TEAM_ENEMY) {
+                            highlightGrid(tx, ty, 'attack'); 
+                        } else {
+                            highlightGrid(tx, ty, 'range'); 
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -741,18 +883,8 @@
         btnMelee.disabled = !hasMelee;
     }
 
-    function selectWeapon(type) {
-        currentWeapon = type; gameState = 'TARGETING'; document.getElementById('action-menu').style.display = 'none';
-        const minR = type === 'melee' ? 1 : 2; const maxR = type === 'melee' ? 1 : 4;
-        clearHighlights(); highlightGrid(selectedUnit.x, selectedUnit.y, 'select');
-        units.forEach(target => {
-            if (target.team !== TEAM_ENEMY || target.hp <= 0) return;
-            const dist = getDistance(selectedUnit, target);
-            if (dist >= minR && dist <= maxR) { highlightGrid(target.x, target.y, 'attack'); }
-        });
-    }
-
     function backToActionMenu() { gameState = 'ACTION_SELECT'; clearHighlights(); highlightGrid(selectedUnit.x, selectedUnit.y, 'select'); updateMenuButtons(); showActionMenu3D(selectedUnit); }
+    
     async function performSingleAttack(source, target, weaponType, isCounter) {
         clearHighlights();
         let minDmg, maxDmg, minHit, maxHit, wName;
@@ -775,7 +907,13 @@
         }
         if (isHit) {
             showPopup(target, "-" + damage, "damage"); gsap.to(tMesh.position, { x: "+=2", duration: 0.05, yoyo: true, repeat: 5 });
-            await sleep(500); target.hp -= damage; log(`命中! 傷害 <span class="log-damage">${damage}</span>`, 'normal'); updateHPBar(target);
+            await sleep(500); 
+            
+            const oldHP = target.hp;
+            target.hp -= damage;
+            animateHPChange(target, oldHP, target.hp);
+            
+            log(`命中! 傷害 <span class="log-damage">${damage}</span>`, 'normal'); 
         } else {
             showPopup(target, "MISS", "miss"); log(`MISS!`, 'log-miss'); await sleep(500);
         }
@@ -851,14 +989,37 @@
 
     function endTurn() {
         if (gameState !== 'IDLE') return; if (selectedUnit) cancelMove();
-        currentTurn = TEAM_ENEMY; document.getElementById('turn-text').innerText = "敵方回合"; document.getElementById('turn-text').style.color = "#ff4d4d"; document.getElementById('btn-end-turn').disabled = true;
+        currentTurn = TEAM_ENEMY; 
+        
+        const turnText = document.getElementById('turn-text');
+        turnText.innerText = "敵方回合";
+        turnText.style.color = "#ff4d4d";
+
+        const btnEnd = document.getElementById('btn-end-turn');
+        btnEnd.innerText = "敵方回合中";
+        btnEnd.style.backgroundColor = "#4a0a0a"; 
+        btnEnd.style.borderColor = "#662222";
+        btnEnd.disabled = true;
+
         units.filter(u => u.team === TEAM_PLAYER).forEach(u => { u.hasActed = false; renderUnit3D(u); });
+        
+        log("--- 敵方回合 ---", "system");
         switchBGM('enemy'); showTurnBanner("ENEMY PHASE", "#ff4d4d", 'AI_THINKING');
     }
 
     function startPlayerTurn() {
         currentTurn = TEAM_PLAYER; turnCount++; document.getElementById('turn-count').innerText = turnCount; 
-        document.getElementById('turn-text').innerText = "玩家回合"; document.getElementById('turn-text').style.color = "#4da6ff"; document.getElementById('btn-end-turn').disabled = false;
+        
+        const turnText = document.getElementById('turn-text');
+        turnText.innerText = "玩家回合"; 
+        turnText.style.color = "#4da6ff"; 
+        
+        const btnEnd = document.getElementById('btn-end-turn');
+        btnEnd.innerText = "結束回合";
+        btnEnd.style.backgroundColor = "#3d6aa8"; 
+        btnEnd.style.borderColor = "#5588cc";
+        btnEnd.disabled = false;
+
         units.filter(u => u.team === TEAM_ENEMY).forEach(u => { u.hasActed = false; renderUnit3D(u); });
         log(`--- 玩家回合 (Turn ${turnCount}) ---`, "system");
         switchBGM('player'); showTurnBanner("PLAYER PHASE", "#4da6ff", 'IDLE');
@@ -898,11 +1059,10 @@
         } return false;
     }
     function restartGame() { 
-        // 修正重啟按鈕邏輯
         document.getElementById('turn-indicator').style.display = 'block';
         document.getElementById('btn-end-turn').style.display = 'block';
         document.getElementById('btn-restart').style.display = 'none';
-        document.getElementById('btn-end-turn').disabled = false;
+        
         const banner = document.getElementById('turn-banner'); 
         banner.style.left = '-100%'; 
         initGame(); 

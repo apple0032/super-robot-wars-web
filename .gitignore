@@ -21,3 +21,6 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+
+# Electron
+*-win32-x64/
