@@ -1,20 +1,41 @@
 const { app, BrowserWindow } = require('electron');
+const path = require('path'); // [新增] 引入 path 模組
 
 function createWindow() {
     const mainWindow = new BrowserWindow({
-        width: 1920,      // 設定固定寬度 (包含地圖和選單)
-        height: 1080,      // 設定固定高度
-        resizable: false, // 關鍵：禁止使用者調整視窗大小
-        useContentSize: true, // 確保內容區域大小符合 width/height
+        width: 1920,
+        height: 1080,
+        resizable: false,
+        useContentSize: true,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,
-            webSecurity: false  // 允許讀取本地圖片資源
+            webSecurity: false 
         },
         autoHideMenuBar: true
     });
 
-    mainWindow.loadFile('srw_3d.html');
+    // --- [關鍵修改] 判斷遊戲模式 ---
+    
+    // 1. 取得執行檔名稱 (例如 "SRW_Game.exe" 或 "SRW_Admin_Edition.exe")
+    const exeName = path.basename(process.execPath).toLowerCase();
+    
+    // 2. 檢查各種條件
+    const isDev = !app.isPackaged;                         // 是否為開發環境
+    const hasFlag = process.argv.includes('--admin');      // 是否有 --admin 參數
+    const isNameAdmin = exeName.includes('admin');         // [新增] 檔名是否包含 "admin"
+
+    let mode = 'player';
+
+    if (isDev || hasFlag || isNameAdmin) {
+        mode = 'admin';
+    }
+
+    console.log(`Executable: ${exeName}`);
+    console.log(`Starting game in mode: ${mode}`);
+
+    // 傳遞參數給 HTML
+    mainWindow.loadFile('srw_3d.html', { query: { mode: mode } });
 }
 
 app.whenReady().then(() => {

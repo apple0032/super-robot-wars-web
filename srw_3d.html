@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>SRW Web Game (Topdown Height Fixed)</title>
+    <title>SRW Web Game (Dev Settings)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
 
@@ -56,6 +56,15 @@
         input[type=checkbox] { cursor: pointer; transform: scale(1.2); margin-right: 10px;}
         .btn-small { padding: 4px 8px; background: #555; border: 1px solid #777; color: white; cursor: pointer; font-size: 12px; border-radius: 4px; }
         .btn-small:hover { background: #777; }
+        
+        .admin-select {
+            width: 55%;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #777;
+            padding: 2px;
+            cursor: pointer;
+        }
 
         #turn-banner {
             position: absolute; top: 40%; left: -100%; width: 100%; height: 100px;
@@ -189,6 +198,13 @@
                         <input type="checkbox" id="hp-toggle" onchange="toggleHPBars()">
                     </div>
                 </div>
+                <div class="control-group">
+                    <div class="control-row">
+                        <span>🕸️ 顯示格線</span>
+                        <input type="checkbox" id="grid-toggle" onchange="toggleGrid()">
+                    </div>
+                </div>
+
                 <div style="border-top:1px solid #555; margin: 5px 0;"></div>
                 <div class="control-group">
                     <div class="control-row">
@@ -207,6 +223,12 @@
             </div>
         </div>
 
+        <div class="info-box" id="admin-settings-box" style="display: none;">
+            <h3 id="admin-settings-header" style="margin-bottom:10px; cursor: pointer; user-select: none; color: #ff5555;" onclick="toggleAdminSettings()">▼ 開發者設定</h3>
+            <div id="admin-settings-body" style="display: block;">
+                </div>
+        </div>
+
         <button class="btn-end" id="btn-end-turn" onclick="playClick(); endTurn()">結束回合</button>
         <button class="btn-restart" id="btn-restart" onclick="playClick(); restartGame()">重新遊戲</button>
     </div>
@@ -215,6 +237,12 @@
 </div>
 
 <script>
+    // --- 系統變數 & Admin 模式 ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const gameMode = urlParams.get('mode'); 
+    const IS_ADMIN = (gameMode === 'admin');
+    console.log("Current Game Mode:", gameMode, "| Admin Access:", IS_ADMIN);
+    
     // --- 3D 變數 ---
     let scene, camera, renderer, raycaster, mouse;
     let ambientLight; 
@@ -222,6 +250,10 @@
     let unitMeshes = {}; 
     let hoverCursor; 
     let glowMeshes = []; 
+    let currentMapMesh = null;
+    let mapGridHelper = null; 
+    let isDraggingMap = false;
+    let isMapPointerDown = false; 
     const TILE_SIZE = 10; 
     const BOARD_SIZE = 18;
     const MAP_WIDTH = BOARD_SIZE * TILE_SIZE;
@@ -230,7 +262,6 @@
     const WORLD_OFFSET_Z = - (BOARD_SIZE * TILE_SIZE) / 2 + TILE_SIZE / 2;
 
     let cameraTarget = new THREE.Vector3(30, 0, 15); 
-    let isDraggingMap = false;
     let dragStartPoint = { x: 0, y: 0 };
     let dragStartTarget = new THREE.Vector3();
 
@@ -238,11 +269,11 @@
     const textureLoader = new THREE.TextureLoader();
     const mapFiles = ['map1.png', 'map2.png', 'map3.png', 'map4.png', 'map5.png'];
     const randomMapIndex = Math.floor(Math.random() * mapFiles.length);
-    const selectedMapFile = mapFiles[randomMapIndex];
-    const mapPath = 'assets/map/' + selectedMapFile;
+    let selectedMapFile = mapFiles[randomMapIndex];
+    let mapPath = 'assets/map/' + selectedMapFile;
     console.log("Loading Map:", mapPath); 
 
-    const mapTexture = textureLoader.load(mapPath, (texture) => {
+    let mapTexture = textureLoader.load(mapPath, (texture) => {
         texture.magFilter = THREE.NearestFilter;
         texture.minFilter = THREE.NearestFilter;
     });
@@ -252,6 +283,7 @@
     const MOVE_RANGE = 5;
     const TEAM_PLAYER = 'player';
     const TEAM_ENEMY = 'enemy';
+    let targetEnemyCount = 5; 
     let units = [];
     let currentTurn = TEAM_PLAYER;
     let selectedUnit = null;
@@ -273,6 +305,88 @@
     const bgmEnemy = new Audio('sounds/enemy.mp3'); bgmEnemy.loop = true; 
     let currentBGM = null;
 
+    // --- [新增] Admin 功能初始化 ---
+    function initAdminSettings() {
+        if (!IS_ADMIN) return;
+
+        // 顯示 Admin 面板
+        const adminBox = document.getElementById('admin-settings-box');
+        adminBox.style.display = 'block';
+        
+        const adminBody = document.getElementById('admin-settings-body');
+
+        // --- 地圖切換 ---
+        const mapGroup = document.createElement('div');
+        mapGroup.className = 'control-group';
+        const mapRow = document.createElement('div');
+        mapRow.className = 'control-row';
+        
+        const mapLabel = document.createElement('span');
+        mapLabel.innerText = '🗺️ 切換地圖';
+        // mapLabel.style.color = '#ff5555'; 
+
+        const mapSelect = document.createElement('select');
+        mapSelect.className = 'admin-select';
+        mapFiles.forEach(file => {
+            const option = document.createElement('option');
+            option.value = file;
+            option.innerText = file;
+            if (file === selectedMapFile) option.selected = true;
+            mapSelect.appendChild(option);
+        });
+        mapSelect.onchange = function() { changeMap(this.value); };
+
+        mapRow.appendChild(mapLabel);
+        mapRow.appendChild(mapSelect);
+        mapGroup.appendChild(mapRow);
+        adminBody.appendChild(mapGroup);
+
+        // --- 敵軍數量切換 ---
+        const countGroup = document.createElement('div');
+        countGroup.className = 'control-group';
+        const countRow = document.createElement('div');
+        countRow.className = 'control-row';
+
+        const countLabel = document.createElement('span');
+        countLabel.innerText = '🤖 敵軍數量';
+        // countLabel.style.color = '#ff5555';
+
+        const countSelect = document.createElement('select');
+        countSelect.className = 'admin-select';
+        const counts = [1, 3, 5, 10, 15, 20];
+        counts.forEach(num => {
+            const option = document.createElement('option');
+            option.value = num;
+            option.innerText = num + ' 機';
+            if (num === targetEnemyCount) option.selected = true;
+            countSelect.appendChild(option);
+        });
+        
+        countSelect.onchange = function() {
+            targetEnemyCount = parseInt(this.value);
+            restartGame(); 
+        };
+
+        countRow.appendChild(countLabel);
+        countRow.appendChild(countSelect);
+        countGroup.appendChild(countRow);
+        adminBody.appendChild(countGroup);
+    }
+
+    function changeMap(filename) {
+        selectedMapFile = filename;
+        const newPath = 'assets/map/' + filename;
+        log(`Admin: 切換地圖至 ${filename}`, 'system');
+        
+        new THREE.TextureLoader().load(newPath, (newTex) => {
+            newTex.magFilter = THREE.NearestFilter;
+            newTex.minFilter = THREE.NearestFilter;
+            if (mapTexture) mapTexture.dispose();
+            mapTexture = newTex;
+            createGridMap(); 
+        });
+    }
+
     // --- 系統控制 ---
     function playClick() {
         if (!isSFXEnabled) return;
@@ -293,6 +407,20 @@
             header.innerText = '▶ 系統設定';
         }
     }
+    
+    // [新增] 開發者設定摺疊
+    function toggleAdminSettings() {
+        const body = document.getElementById('admin-settings-body');
+        const header = document.getElementById('admin-settings-header');
+        playClick();
+        if (body.style.display === 'none') {
+            body.style.display = 'block';
+            header.innerText = '▼ 開發者設定';
+        } else {
+            body.style.display = 'none';
+            header.innerText = '▶ 開發者設定';
+        }
+    }
 
     function toggleHPBars() {
         const checkbox = document.getElementById('hp-toggle');
@@ -306,6 +434,13 @@
                 el.style.display = 'none';
             }
         });
+    }
+
+    function toggleGrid() {
+        const checkbox = document.getElementById('grid-toggle');
+        if (mapGridHelper) {
+            mapGridHelper.visible = checkbox.checked;
+        }
     }
 
     function toggleSFX() {
@@ -346,7 +481,6 @@
         camera.lookAt(cameraTarget);
     }
 
-    // --- [修改] 重置相機邏輯：鳥瞰時設定高度為260 ---
     function resetCamera(mode) {
         playClick();
         let newX = 0, newZ = 0;
@@ -357,7 +491,7 @@
             newX = 30; newZ = 15; 
         } else if (mode === 'topdown') {
             document.getElementById('cam-rotate').value = 0;
-            document.getElementById('cam-height').value = 260; // 硬編碼為260
+            document.getElementById('cam-height').value = 260; 
             document.getElementById('cam-zoom').value = 10;
             newX = 0; newZ = 0;
         }
@@ -470,6 +604,7 @@
         document.getElementById('cam-height').value = 200;
         document.getElementById('vol-slider').value = 0.7;
         document.getElementById('hp-toggle').checked = false;
+        document.getElementById('grid-toggle').checked = false; 
         document.getElementById('sfx-toggle').checked = true; 
         isHPVisible = false;
         isSFXEnabled = true;
@@ -494,7 +629,9 @@
 
     // --- 滑鼠拖曳邏輯 ---
     function onPointerDown(event) {
+        isMapPointerDown = false;
         if (event.target.closest('#ui-panel') || event.target.closest('#action-menu')) return;
+        isMapPointerDown = true;
         isDraggingMap = false;
         dragStartPoint.x = event.clientX;
         dragStartPoint.y = event.clientY;
@@ -506,6 +643,8 @@
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
         if (event.buttons > 0) {
+            if (!isMapPointerDown) return;
+
             const dx = event.clientX - dragStartPoint.x;
             const dy = event.clientY - dragStartPoint.y;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
@@ -558,6 +697,7 @@
     }
 
     function onPointerUp(event) {
+        isMapPointerDown = false;
         isDraggingMap = false;
         document.getElementById('canvas-container').style.cursor = 'grab';
 
@@ -581,6 +721,14 @@
 
     // 地圖生成
     function createGridMap() {
+        if (currentMapMesh) {
+            scene.remove(currentMapMesh);
+        }
+        // 移除舊的 GridHelper
+        if (mapGridHelper) {
+            scene.remove(mapGridHelper);
+        }
+
         gridMeshes.forEach(row => row.forEach(mesh => scene.remove(mesh)));
         gridMeshes = [];
         gridHeights = [];
@@ -599,8 +747,18 @@
         mapMesh.position.y = -0.1; 
         mapMesh.receiveShadow = true;
         scene.add(mapMesh);
+        currentMapMesh = mapMesh;
 
-        // 2. 創建頂層互動網格 (透明)
+        // 2. 創建格線 Helper
+        mapGridHelper = new THREE.GridHelper(MAP_WIDTH, BOARD_SIZE, 0xffffff, 0xffffff);
+        mapGridHelper.position.set(0, 0.05, 0); 
+        mapGridHelper.visible = false; 
+        if (document.getElementById('grid-toggle') && document.getElementById('grid-toggle').checked) {
+            mapGridHelper.visible = true;
+        }
+        scene.add(mapGridHelper);
+
+        // 3. 創建頂層互動網格 (透明)
         for (let y = 0; y < BOARD_SIZE; y++) {
             gridMeshes[y] = [];
             gridHeights[y] = []; 
@@ -652,131 +810,56 @@
     function createRobotModel(color, team) {
         const group = new THREE.Group();
         
-        // 材質定義
         const mainMat = new THREE.MeshPhongMaterial({ color: color });
         const darkMat = new THREE.MeshPhongMaterial({ color: 0x333333 }); 
         const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        // [新增] 追擊槍材質：深咖啡色槍管，深黃色追擊器
-        const gunBarrelMat = new THREE.MeshPhongMaterial({ color: 0x8B4513, shininess: 30 }); // 啡色
-        const gunSensorMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 }); // 深黃色 (Gold)
+        const gunBarrelMat = new THREE.MeshPhongMaterial({ color: 0x8B4513, shininess: 30 }); 
+        const gunSensorMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 }); 
 
-        // 設定光劍顏色 (根據隊伍)
         let bladeColor, glowColor;
         if (team === TEAM_PLAYER) {
-            bladeColor = 0xccffff; // 玩家：青白色核心
-            glowColor = 0x0033ff;  // 玩家：藍色光暈
+            bladeColor = 0xccffff; 
+            glowColor = 0x0033ff;  
         } else {
-            bladeColor = 0xffddff; // 敵人：粉白核心
-            glowColor = 0xff00cc;  // 敵人：粉紅光暈
+            bladeColor = 0xffddff; 
+            glowColor = 0xff00cc;  
         }
 
-        // === 1. 身體 (Body) - 縮小 ===
         const chestGeo = new THREE.BoxGeometry(3.0, 2.5, 2.0); 
         const chest = new THREE.Mesh(chestGeo, mainMat);
-        chest.position.y = 3.0; 
-        chest.castShadow = true;
-        chest.receiveShadow = true;
-        chest.userData.isArmor = true;
+        chest.position.y = 3.0; chest.castShadow = true; chest.receiveShadow = true; chest.userData.isArmor = true;
         group.add(chest);
 
-        // === 2. 頭部 (Head) - 縮小 ===
         const headGeo = new THREE.BoxGeometry(3.5, 3.0, 3.5); 
         const head = new THREE.Mesh(headGeo, mainMat);
-        head.position.y = 5.8; 
-        head.castShadow = true;
-        head.userData.isArmor = true;
+        head.position.y = 5.8; head.castShadow = true; head.userData.isArmor = true;
         group.add(head);
 
-        // 眼睛
         const eyeGeo = new THREE.PlaneGeometry(1.2, 1.4);
-        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-        leftEye.position.set(-0.8, 5.6, 1.76); 
-        group.add(leftEye);
-        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-        rightEye.position.set(0.8, 5.6, 1.76); 
-        group.add(rightEye);
+        const leftEye = new THREE.Mesh(eyeGeo, eyeMat); leftEye.position.set(-0.8, 5.6, 1.76); group.add(leftEye);
+        const rightEye = new THREE.Mesh(eyeGeo, eyeMat); rightEye.position.set(0.8, 5.6, 1.76); group.add(rightEye);
 
-        // === 3. 腿部 (Legs) - 縮小 ===
         const legGeo = new THREE.BoxGeometry(1.2, 2.0, 1.8);
-        const leftLeg = new THREE.Mesh(legGeo, darkMat);
-        leftLeg.position.set(-0.8, 1.0, 0);
-        leftLeg.castShadow = true;
-        const rightLeg = new THREE.Mesh(legGeo, darkMat);
-        rightLeg.position.set(0.8, 1.0, 0);
-        rightLeg.castShadow = true;
-        group.add(leftLeg, rightLeg);
+        const leftLeg = new THREE.Mesh(legGeo, darkMat); leftLeg.position.set(-0.8, 1.0, 0); leftLeg.castShadow = true; group.add(leftLeg);
+        const rightLeg = new THREE.Mesh(legGeo, darkMat); rightLeg.position.set(0.8, 1.0, 0); rightLeg.castShadow = true; group.add(rightLeg);
 
-        // === 4. 手臂 (Arms) - 縮小 ===
         const armGeo = new THREE.BoxGeometry(1.2, 2.5, 1.5);
-        const leftArm = new THREE.Mesh(armGeo, mainMat);
-        leftArm.position.set(-2.2, 3.0, 0);
-        leftArm.castShadow = true;
-        leftArm.userData.isArmor = true;
-        const rightArm = new THREE.Mesh(armGeo, mainMat);
-        rightArm.position.set(2.2, 3.0, 0);
-        rightArm.castShadow = true;
-        rightArm.userData.isArmor = true;
-        group.add(leftArm, rightArm);
+        const leftArm = new THREE.Mesh(armGeo, mainMat); leftArm.position.set(-2.2, 3.0, 0); leftArm.castShadow = true; leftArm.userData.isArmor = true; group.add(leftArm);
+        const rightArm = new THREE.Mesh(armGeo, mainMat); rightArm.position.set(2.2, 3.0, 0); rightArm.castShadow = true; rightArm.userData.isArmor = true; group.add(rightArm);
 
-        // === 5. 手持武器 (Main Beam Saber) ===
         const mainSwordGroup = new THREE.Group();
-        mainSwordGroup.position.set(2.8, 3.0, 1.0);
-        mainSwordGroup.rotation.set(Math.PI / 2 + 0.2, 0, Math.PI / 8);
+        mainSwordGroup.position.set(2.8, 3.0, 1.0); mainSwordGroup.rotation.set(Math.PI / 2 + 0.2, 0, Math.PI / 8);
         group.add(mainSwordGroup);
 
-        // 劍柄
-        const hiltGeo = new THREE.CylinderGeometry(0.25, 0.25, 2.0, 8); 
-        const hilt = new THREE.Mesh(hiltGeo, darkMat);
-        hilt.position.set(0, -1.0, 0); 
-        mainSwordGroup.add(hilt);
+        const hiltGeo = new THREE.CylinderGeometry(0.25, 0.25, 2.0, 8); const hilt = new THREE.Mesh(hiltGeo, darkMat); hilt.position.set(0, -1.0, 0); mainSwordGroup.add(hilt);
+        const bladeGeo = new THREE.CylinderGeometry(0.2, 0.2, 6.0, 8); const bladeMat = new THREE.MeshBasicMaterial({ color: bladeColor }); const blade = new THREE.Mesh(bladeGeo, bladeMat); blade.position.set(0, 3.0, 0); mainSwordGroup.add(blade);
+        const glowGeo = new THREE.CylinderGeometry(0.6, 0.6, 6.5, 8); const glowMat = new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }); const glow = new THREE.Mesh(glowGeo, glowMat); glow.position.set(0, 3.0, 0); mainSwordGroup.add(glow); glowMeshes.push(glow); 
 
-        // 光劍核心 (使用判斷後的顏色)
-        const bladeGeo = new THREE.CylinderGeometry(0.2, 0.2, 6.0, 8); 
-        const bladeMat = new THREE.MeshBasicMaterial({ color: bladeColor }); 
-        const blade = new THREE.Mesh(bladeGeo, bladeMat);
-        blade.position.set(0, 3.0, 0); 
-        mainSwordGroup.add(blade);
-
-        // 光劍光暈 (使用判斷後的顏色)
-        const glowGeo = new THREE.CylinderGeometry(0.6, 0.6, 6.5, 8); 
-        const glowMat = new THREE.MeshBasicMaterial({ 
-            color: glowColor, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false 
-        });
-        const glow = new THREE.Mesh(glowGeo, glowMat);
-        glow.position.set(0, 3.0, 0);
-        mainSwordGroup.add(glow);
-        glowMeshes.push(glow); 
-
-        // === 6. 背部追擊槍 (Pursuit Gun) - [修改] 套用新材質 ===
-        // 背包掛架
-        const backpackGeo = new THREE.BoxGeometry(1.8, 2.4, 1.2);
-        const backpack = new THREE.Mesh(backpackGeo, darkMat);
-        backpack.position.set(0, 4.0, -1.8); 
-        group.add(backpack);
-
-        // 槍枝群組
-        const gunGroup = new THREE.Group();
-        gunGroup.position.set(-1.0, 5.0, -2.2); 
-        gunGroup.rotation.x = -0.2; 
-        group.add(gunGroup);
-
-        // 槍管 (啡色)
-        const barrelGeo = new THREE.CylinderGeometry(0.3, 0.35, 6.0, 16);
-        const barrel = new THREE.Mesh(barrelGeo, gunBarrelMat);
-        barrel.position.y = 1.5;
-        gunGroup.add(barrel);
-
-        // 槍口 (啡色)
-        const muzzleGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.8, 16);
-        const muzzle = new THREE.Mesh(muzzleGeo, gunBarrelMat);
-        muzzle.position.y = 4.5; 
-        gunGroup.add(muzzle);
-
-        // 追擊器/瞄準鏡 (深黃色)
-        const sensorGeo = new THREE.BoxGeometry(0.5, 1.0, 0.6);
-        const sensor = new THREE.Mesh(sensorGeo, gunSensorMat);
-        sensor.position.set(0, 1.0, 0.5); 
-        gunGroup.add(sensor);
+        const backpackGeo = new THREE.BoxGeometry(1.8, 2.4, 1.2); const backpack = new THREE.Mesh(backpackGeo, darkMat); backpack.position.set(0, 4.0, -1.8); group.add(backpack);
+        const gunGroup = new THREE.Group(); gunGroup.position.set(-1.0, 5.0, -2.2); gunGroup.rotation.x = -0.2; group.add(gunGroup);
+        const barrelGeo = new THREE.CylinderGeometry(0.3, 0.35, 6.0, 16); const barrel = new THREE.Mesh(barrelGeo, gunBarrelMat); barrel.position.y = 1.5; gunGroup.add(barrel);
+        const muzzleGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.8, 16); const muzzle = new THREE.Mesh(muzzleGeo, gunBarrelMat); muzzle.position.y = 4.5; gunGroup.add(muzzle);
+        const sensorGeo = new THREE.BoxGeometry(0.5, 1.0, 0.6); const sensor = new THREE.Mesh(sensorGeo, gunSensorMat); sensor.position.set(0, 1.0, 0.5); gunGroup.add(sensor);
 
         return group;
     }
@@ -786,6 +869,9 @@
     function initGame() {
         initThreeJS();
         createGridMap();
+        
+        // 初始化 Admin 面板 (移到最後，避免重複初始化)
+        // initAdminSettings(); // 這裡不呼叫，移到底部
 
         units = [];
         for (let id in unitMeshes) {
@@ -817,6 +903,7 @@
         isDraggingMap = false;
         gameState = 'TRANSITION'; 
 
+        // 創建玩家單位
         const pY = BOARD_SIZE - 1;
         createUnit(TEAM_PLAYER, 0, pY);
         createUnit(TEAM_PLAYER, 1, pY);
@@ -824,12 +911,17 @@
         createUnit(TEAM_PLAYER, 0, pY - 1);
         createUnit(TEAM_PLAYER, 1, pY - 1);
 
-        const eX = BOARD_SIZE - 1;
-        createUnit(TEAM_ENEMY, eX, 0);
-        createUnit(TEAM_ENEMY, eX - 1, 0);
-        createUnit(TEAM_ENEMY, eX - 2, 0);
-        createUnit(TEAM_ENEMY, eX, 1);
-        createUnit(TEAM_ENEMY, eX - 1, 1);
+        // 根據 targetEnemyCount 動態創建敵軍
+        for (let i = 0; i < targetEnemyCount; i++) {
+            const col = i % 5; 
+            const row = Math.floor(i / 5);
+            const ex = (BOARD_SIZE - 1) - col;
+            const ey = row;
+
+            if (ey < BOARD_SIZE && ex >= 0) {
+                createUnit(TEAM_ENEMY, ex, ey);
+            }
+        }
 
         switchBGM('player');
         showTurnBanner("PLAYER PHASE", "#4da6ff", 'IDLE');
@@ -854,7 +946,6 @@
         const teamColor = unit.team === TEAM_PLAYER ? 0x4da6ff : 0xff4d4d;
 
         if (!mesh) {
-            // [修改] 傳入 unit.team 讓函式知道是誰，決定光劍顏色
             mesh = createRobotModel(teamColor, unit.team);
             const pos = logicalToWorld(unit.x, unit.y);
             mesh.position.set(pos.x, pos.y, pos.z);
@@ -941,7 +1032,7 @@
             // 移動時面向目標方向
             mesh.lookAt(targetPos.x, mesh.position.y, targetPos.z);
 
-            // [修改] 增加斜向判定權重，讓移動時更像是在"走"斜線 (如果有的話)
+            // 增加斜向判定權重
             const tl = gsap.timeline({ onComplete: () => { unit.x = tx; unit.y = ty; resolve(); }});
             tl.to(mesh.position, { x: targetPos.x, z: targetPos.z, y: targetPos.y, duration: 0.5, ease: "power2.inOut" });
         });
@@ -1076,8 +1167,7 @@
     }
 
     async function commitMove(x, y) {
-        gameState = 'ANIMATING'; 
-        await moveUnit3D(selectedUnit, x, y);
+        gameState = 'ANIMATING'; await moveUnit3D(selectedUnit, x, y);
         gameState = 'ACTION_SELECT'; clearHighlights(); highlightGrid(x, y, 'select'); updateMenuButtons(); showActionMenu3D(selectedUnit);
     }
 
@@ -1294,7 +1384,7 @@
 
     function checkWinCondition() {
         const players = units.filter(u => u.team === TEAM_PLAYER && u.hp > 0); const enemies = units.filter(u => u.team === TEAM_ENEMY && u.hp > 0);
-        let msg = "", isOver = false; if (enemies.length === 0) { msg = "VICTORY! 敵軍全滅！"; isOver = true; } else if (players.length === 0) { msg = "DEFEAT... 我軍全滅。"; isOver = true; }
+        let msg = "", isOver = false; if (enemies.length === 0) { msg = "勝利! 敵軍全滅！"; isOver = true; } else if (players.length === 0) { msg = "失敗! 我軍全滅。"; isOver = true; }
         if (isOver) {
             gameState = 'GAME_OVER'; switchBGM(null); document.getElementById('turn-indicator').style.display = 'none'; document.getElementById('btn-end-turn').style.display = 'none'; document.getElementById('btn-restart').style.display = 'block';
             log(`=== ${msg} ===`, 'log-system'); const banner = document.getElementById('turn-banner');
@@ -1320,7 +1410,11 @@
         el.innerHTML = `<div style="color:${color};font-size:18px;font-weight:bold;">${name}</div><div style="font-size:16px; margin: 5px 0;">HP: <span style="color:${unit.hp<40?'red':'white'}">${unit.hp}</span> / ${unit.maxHp}</div><div style="color:#aaa;">位置: (${unit.x}, ${unit.y})</div><div style="color:#aaa;">狀態: ${unit.hasActed ? '已行動' : '未行動'}</div>`;
     }
 
-    initGame(); 
+    // --- [修改] 初始化順序 ---
+    // 先初始化 Admin 設定
+    initAdminSettings();
+    // 再啟動遊戲
+    initGame();
 </script>
 
 </body>

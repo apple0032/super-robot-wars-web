@@ -5,8 +5,10 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-packager . MySRWGame --platform=win32 --arch=x64 --overwrite",
-    "dev": "five-server . --open=srw_3d.html --ignore=node_modules"
+    "build:play": "electron-packager . SRW_Game --platform=win32 --arch=x64 --overwrite",
+    "build:admin": "electron-packager . SRW_Game_Admin --platform=win32 --arch=x64 --overwrite",
+    "dev": "five-server . --open=srw_3d.html?mode=admin --ignore=node_modules",
+    "play": "five-server . --open=srw_3d.html --ignore=node_modules"
   },
   "keywords": [],
   "author": "",
