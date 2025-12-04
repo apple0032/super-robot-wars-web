@@ -8,7 +8,8 @@ function createWindow() {
         useContentSize: true, // 確保內容區域大小符合 width/height
         webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false
+            contextIsolation: false,
+            webSecurity: false  // 允許讀取本地圖片資源
         },
         autoHideMenuBar: true
     });

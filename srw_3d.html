@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>SRW Web Game (Fixed Map & Position)</title>
+    <title>SRW Web Game (Colored Saber & Gun)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
 
@@ -40,7 +40,6 @@
             pointer-events: auto; color: white; overflow-y: auto;
         }
 
-        /* [新增] Game Logo 樣式 */
         .game-logo {
             display: block;
             max-width: 100%;
@@ -151,7 +150,7 @@
                 <div class="control-group">
                     <div class="control-row">
                         <span>💡 亮度</span>
-                        <input type="range" id="light-slider" min="0.5" max="3" step="0.1" value="2.0" oninput="updateSystemSettings()">
+                        <input type="range" id="light-slider" min="0.5" max="3" step="0.1" value="0.5" oninput="updateLight()">
                     </div>
                     <div class="control-row">
                         <span>🔍 縮放</span>
@@ -220,8 +219,12 @@
     let ambientLight; 
     let gridMeshes = []; 
     let unitMeshes = {}; 
+    let hoverCursor; 
+    let glowMeshes = []; 
     const TILE_SIZE = 10; 
     const BOARD_SIZE = 18;
+    const MAP_WIDTH = BOARD_SIZE * TILE_SIZE;
+    const MAP_HEIGHT = BOARD_SIZE * TILE_SIZE;
     const WORLD_OFFSET_X = - (BOARD_SIZE * TILE_SIZE) / 2 + TILE_SIZE / 2;
     const WORLD_OFFSET_Z = - (BOARD_SIZE * TILE_SIZE) / 2 + TILE_SIZE / 2;
 
@@ -229,6 +232,19 @@
     let isDraggingMap = false;
     let dragStartPoint = { x: 0, y: 0 };
     let dragStartTarget = new THREE.Vector3();
+
+    // 隨機載入地圖
+    const textureLoader = new THREE.TextureLoader();
+    const mapFiles = ['map1.png', 'map2.png', 'map3.png' , 'map4.png' ,'map5.png'];
+    const randomMapIndex = Math.floor(Math.random() * mapFiles.length);
+    const selectedMapFile = mapFiles[randomMapIndex];
+    const mapPath = 'assets/map/' + selectedMapFile;
+    console.log("Loading Map:", mapPath); 
+
+    const mapTexture = textureLoader.load(mapPath, (texture) => {
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+    });
 
     // --- 遊戲變數 ---
     const UNIT_HP = 100;
@@ -257,7 +273,6 @@
     let currentBGM = null;
 
     // --- 系統控制 ---
-
     function playClick() {
         if (!isSFXEnabled) return;
         sfxClick.volume = masterVolume;
@@ -281,7 +296,6 @@
     function toggleHPBars() {
         const checkbox = document.getElementById('hp-toggle');
         isHPVisible = checkbox.checked;
-        
         const allBars = document.querySelectorAll('.hp-overlay');
         allBars.forEach(el => {
             if (isHPVisible) {
@@ -298,6 +312,12 @@
         isSFXEnabled = checkbox.checked;
     }
 
+    function updateLight() {
+        if (!ambientLight) return;
+        const lightVal = parseFloat(document.getElementById('light-slider').value);
+        ambientLight.intensity = lightVal;
+    }
+
     function updateMapPosition() {
         const x = parseFloat(document.getElementById('map-pan-x').value);
         const z = parseFloat(document.getElementById('map-pan-z').value);
@@ -308,9 +328,7 @@
 
     function updateSystemSettings() {
         if (!camera) return;
-        const lightVal = parseFloat(document.getElementById('light-slider').value);
-        if(ambientLight) ambientLight.intensity = lightVal;
-
+        
         const angle = parseFloat(document.getElementById('cam-rotate').value);
         const height = parseFloat(document.getElementById('cam-height').value);
         const radius = parseFloat(document.getElementById('cam-zoom').value);
@@ -334,7 +352,6 @@
             document.getElementById('cam-rotate').value = 0;
             document.getElementById('cam-height').value = 200;
             document.getElementById('cam-zoom').value = 140; 
-            document.getElementById('light-slider').value = 2.0; 
             newX = 30; newZ = 15; 
         } else if (mode === 'topdown') {
             document.getElementById('cam-rotate').value = 0;
@@ -410,13 +427,27 @@
         renderer.shadowMap.enabled = true;
         container.appendChild(renderer.domElement);
 
-        ambientLight = new THREE.AmbientLight(0x808080, 1.5);
+        ambientLight = new THREE.AmbientLight(0x808080, 0.5);
         scene.add(ambientLight);
         
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
         dirLight.position.set(100, 200, 50);
         dirLight.castShadow = true;
         scene.add(dirLight);
+
+        // Hover 游標
+        const cursorGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.5, TILE_SIZE);
+        const cursorMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffff00,      // 黃色
+            transparent: true,    // 開啟透明
+            opacity: 0.4,
+            depthTest: false,     // 不遮擋
+            depthWrite: false
+        });
+        hoverCursor = new THREE.Mesh(cursorGeometry, cursorMaterial);
+        hoverCursor.renderOrder = 999;
+        hoverCursor.visible = false; 
+        scene.add(hoverCursor);
 
         raycaster = new THREE.Raycaster();
         mouse = new THREE.Vector2();
@@ -433,7 +464,7 @@
         document.getElementById('map-pan-z').value = cameraTarget.z;
         document.getElementById('cam-rotate').value = 0;
         document.getElementById('cam-zoom').value = 140;
-        document.getElementById('light-slider').value = 2.0;
+        document.getElementById('light-slider').value = 0.5; // UI 同步為 0.5
         document.getElementById('cam-height').value = 200;
         document.getElementById('vol-slider').value = 0.7;
         document.getElementById('hp-toggle').checked = false;
@@ -469,6 +500,9 @@
     }
 
     function onPointerMove(event) {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
         if (event.buttons > 0) {
             const dx = event.clientX - dragStartPoint.x;
             const dy = event.clientY - dragStartPoint.y;
@@ -493,30 +527,54 @@
                 document.getElementById('map-pan-z').value = cameraTarget.z;
 
                 updateSystemSettings();
+                
+                if(hoverCursor) hoverCursor.visible = false;
+                return;
+            }
+        }
+
+        if (!isDraggingMap && hoverCursor && gridMeshes.length > 0) {
+            raycaster.setFromCamera(mouse, camera);
+            const allGrids = gridMeshes.flat();
+            const intersects = raycaster.intersectObjects(allGrids);
+
+            if (intersects.length > 0) {
+                const obj = intersects[0].object;
+                const hx = obj.userData.x;
+                const hy = obj.userData.y;
+                const topY = 0; 
+
+                const wx = hx * TILE_SIZE + WORLD_OFFSET_X;
+                const wz = hy * TILE_SIZE + WORLD_OFFSET_Z;
+
+                hoverCursor.position.set(wx, topY + 0.25, wz);
+                hoverCursor.visible = true;
+            } else {
+                hoverCursor.visible = false;
             }
         }
     }
 
     function onPointerUp(event) {
-        if (event.target.closest('#ui-panel') || event.target.closest('#action-menu')) return;
+        isDraggingMap = false;
         document.getElementById('canvas-container').style.cursor = 'grab';
-        if (!isDraggingMap) {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const allGrids = gridMeshes.flat();
-            const intersects = raycaster.intersectObjects(allGrids);
-            if (intersects.length > 0) {
-                const obj = intersects[0].object;
-                handleCellClick(obj.userData.x, obj.userData.y);
-            } else {
-                if (gameState === 'ACTION_SELECT') {
-                    const hasMoved = (selectedUnit.x !== originalPos.x || selectedUnit.y !== originalPos.y);
-                    if (!hasMoved) resetState();
-                }
+
+        if (event.target.closest('#ui-panel') || event.target.closest('#action-menu')) return;
+        
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const allGrids = gridMeshes.flat();
+        const intersects = raycaster.intersectObjects(allGrids);
+        if (intersects.length > 0) {
+            const obj = intersects[0].object;
+            handleCellClick(obj.userData.x, obj.userData.y);
+        } else {
+            if (gameState === 'ACTION_SELECT') {
+                const hasMoved = (selectedUnit.x !== originalPos.x || selectedUnit.y !== originalPos.y);
+                if (!hasMoved) resetState();
             }
         }
-        isDraggingMap = false;
     }
 
     // 地圖生成
@@ -525,45 +583,47 @@
         gridMeshes = [];
         gridHeights = [];
 
-        const theme = Math.floor(Math.random() * 3);
-        let themeName = "";
-        if(theme === 0) themeName = "Cyber (預設)";
-        if(theme === 1) themeName = "City (城市)";
-        if(theme === 2) themeName = "Nature (自然)";
-        log(`地圖主題: ${themeName}`, 'system');
+        log(`地圖主題: 2D 貼圖模式 (${selectedMapFile})`, 'system');
 
+        // 1. 創建底層地圖平面
+        const mapGeometry = new THREE.PlaneGeometry(MAP_WIDTH, MAP_HEIGHT);
+        const mapMaterial = new THREE.MeshPhongMaterial({ 
+            map: mapTexture, 
+            side: THREE.DoubleSide,
+            shininess: 0 
+        });
+        const mapMesh = new THREE.Mesh(mapGeometry, mapMaterial);
+        mapMesh.rotation.x = -Math.PI / 2; 
+        mapMesh.position.y = -0.1; 
+        mapMesh.receiveShadow = true;
+        scene.add(mapMesh);
+
+        // 2. 創建頂層互動網格 (透明)
         for (let y = 0; y < BOARD_SIZE; y++) {
             gridMeshes[y] = [];
-            gridHeights[y] = [];
+            gridHeights[y] = []; 
             for (let x = 0; x < BOARD_SIZE; x++) {
-                let color, height = 2;
-                if (theme === 0) { 
-                    color = (x + y) % 2 === 0 ? 0x3a3a3a : 0x444444;
-                } else if (theme === 1) { 
-                    const r = Math.random();
-                    if (r > 0.85) { height = 8 + Math.random() * 15; color = 0x888899; }
-                    else if (r > 0.7) { height = 4 + Math.random() * 4; color = 0x666677; }
-                    else { color = 0x333333; }
-                } else if (theme === 2) { 
-                    const r = Math.random();
-                    if (r > 0.8) { height = 4 + Math.random() * 6; color = 0x4a331a; } 
-                    else if (r > 0.6) { color = 0x0d2b0d; } 
-                    else if (r > 0.4) { color = 0x1a331a; } 
-                    else { height = 1; color = 0x102545; } 
-                }
-                const geometry = new THREE.BoxGeometry(TILE_SIZE * 0.95, height, TILE_SIZE * 0.95);
-                const material = new THREE.MeshLambertMaterial({ color: color });
-                const cube = new THREE.Mesh(geometry, material);
+                const geometry = new THREE.PlaneGeometry(TILE_SIZE * 0.98, TILE_SIZE * 0.98);
+                const material = new THREE.MeshBasicMaterial({
+                    color: 0x000000,
+                    transparent: true,
+                    opacity: 0.0, 
+                    side: THREE.DoubleSide,
+                    depthWrite: false 
+                });
+                const plane = new THREE.Mesh(geometry, material);
+                
                 const wx = x * TILE_SIZE + WORLD_OFFSET_X;
                 const wz = y * TILE_SIZE + WORLD_OFFSET_Z;
-                cube.position.set(wx, height / 2 - 1, wz); 
-                const topY = height - 1; 
-                cube.userData = { x: x, y: y, originalColor: color, topY: topY };
-                cube.receiveShadow = true;
-                if(height > 2) cube.castShadow = true;
-                scene.add(cube);
-                gridMeshes[y][x] = cube;
-                gridHeights[y][x] = topY;
+                
+                plane.rotation.x = -Math.PI / 2; 
+                plane.position.set(wx, 0.05, wz); 
+                
+                plane.userData = { x: x, y: y };
+                
+                scene.add(plane);
+                gridMeshes[y][x] = plane;
+                gridHeights[y][x] = 0; 
             }
         }
     }
@@ -572,18 +632,151 @@
         const wx = x * TILE_SIZE + WORLD_OFFSET_X;
         const wz = y * TILE_SIZE + WORLD_OFFSET_Z;
         const groundY = gridHeights[y][x]; 
-        return { x: wx, y: groundY + 4, z: wz };
+        return { x: wx, y: 0.5, z: wz };
     }
 
     function toScreenPosition(obj, offsetX = 0, offsetY = 0) {
         const vector = new THREE.Vector3();
         obj.updateMatrixWorld();
         vector.setFromMatrixPosition(obj.matrixWorld);
-        vector.y += 6;
+        vector.y += 8; 
         vector.project(camera);
         const x = (vector.x * .5 + .5) * window.innerWidth + offsetX;
         const y = -(vector.y * .5 - .5) * window.innerHeight + offsetY;
         return { x: x, y: y };
+    }
+
+    // --- [修改版] SD 機器人模型函式 (包含敵我配色區分 & 追擊槍配色) ---
+    function createRobotModel(color, team) {
+        const group = new THREE.Group();
+        
+        // 材質定義
+        const mainMat = new THREE.MeshPhongMaterial({ color: color });
+        const darkMat = new THREE.MeshPhongMaterial({ color: 0x333333 }); 
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        // [新增] 追擊槍材質：深咖啡色槍管，深黃色追擊器
+        const gunBarrelMat = new THREE.MeshPhongMaterial({ color: 0x8B4513, shininess: 30 }); // 啡色
+        const gunSensorMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 }); // 深黃色 (Gold)
+
+        // 設定光劍顏色 (根據隊伍)
+        let bladeColor, glowColor;
+        if (team === TEAM_PLAYER) {
+            bladeColor = 0xccffff; // 玩家：青白色核心
+            glowColor = 0x0033ff;  // 玩家：藍色光暈
+        } else {
+            bladeColor = 0xffddff; // 敵人：粉白核心
+            glowColor = 0xff00cc;  // 敵人：粉紅光暈
+        }
+
+        // === 1. 身體 (Body) - 縮小 ===
+        const chestGeo = new THREE.BoxGeometry(3.0, 2.5, 2.0); 
+        const chest = new THREE.Mesh(chestGeo, mainMat);
+        chest.position.y = 3.0; 
+        chest.castShadow = true;
+        chest.receiveShadow = true;
+        chest.userData.isArmor = true;
+        group.add(chest);
+
+        // === 2. 頭部 (Head) - 縮小 ===
+        const headGeo = new THREE.BoxGeometry(3.5, 3.0, 3.5); 
+        const head = new THREE.Mesh(headGeo, mainMat);
+        head.position.y = 5.8; 
+        head.castShadow = true;
+        head.userData.isArmor = true;
+        group.add(head);
+
+        // 眼睛
+        const eyeGeo = new THREE.PlaneGeometry(1.2, 1.4);
+        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+        leftEye.position.set(-0.8, 5.6, 1.76); 
+        group.add(leftEye);
+        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+        rightEye.position.set(0.8, 5.6, 1.76); 
+        group.add(rightEye);
+
+        // === 3. 腿部 (Legs) - 縮小 ===
+        const legGeo = new THREE.BoxGeometry(1.2, 2.0, 1.8);
+        const leftLeg = new THREE.Mesh(legGeo, darkMat);
+        leftLeg.position.set(-0.8, 1.0, 0);
+        leftLeg.castShadow = true;
+        const rightLeg = new THREE.Mesh(legGeo, darkMat);
+        rightLeg.position.set(0.8, 1.0, 0);
+        rightLeg.castShadow = true;
+        group.add(leftLeg, rightLeg);
+
+        // === 4. 手臂 (Arms) - 縮小 ===
+        const armGeo = new THREE.BoxGeometry(1.2, 2.5, 1.5);
+        const leftArm = new THREE.Mesh(armGeo, mainMat);
+        leftArm.position.set(-2.2, 3.0, 0);
+        leftArm.castShadow = true;
+        leftArm.userData.isArmor = true;
+        const rightArm = new THREE.Mesh(armGeo, mainMat);
+        rightArm.position.set(2.2, 3.0, 0);
+        rightArm.castShadow = true;
+        rightArm.userData.isArmor = true;
+        group.add(leftArm, rightArm);
+
+        // === 5. 手持武器 (Main Beam Saber) ===
+        const mainSwordGroup = new THREE.Group();
+        mainSwordGroup.position.set(2.8, 3.0, 1.0);
+        mainSwordGroup.rotation.set(Math.PI / 2 + 0.2, 0, Math.PI / 8);
+        group.add(mainSwordGroup);
+
+        // 劍柄
+        const hiltGeo = new THREE.CylinderGeometry(0.25, 0.25, 2.0, 8); 
+        const hilt = new THREE.Mesh(hiltGeo, darkMat);
+        hilt.position.set(0, -1.0, 0); 
+        mainSwordGroup.add(hilt);
+
+        // 光劍核心 (使用判斷後的顏色)
+        const bladeGeo = new THREE.CylinderGeometry(0.2, 0.2, 6.0, 8); 
+        const bladeMat = new THREE.MeshBasicMaterial({ color: bladeColor }); 
+        const blade = new THREE.Mesh(bladeGeo, bladeMat);
+        blade.position.set(0, 3.0, 0); 
+        mainSwordGroup.add(blade);
+
+        // 光劍光暈 (使用判斷後的顏色)
+        const glowGeo = new THREE.CylinderGeometry(0.6, 0.6, 6.5, 8); 
+        const glowMat = new THREE.MeshBasicMaterial({ 
+            color: glowColor, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false 
+        });
+        const glow = new THREE.Mesh(glowGeo, glowMat);
+        glow.position.set(0, 3.0, 0);
+        mainSwordGroup.add(glow);
+        glowMeshes.push(glow); 
+
+        // === 6. 背部追擊槍 (Pursuit Gun) - [修改] 套用新材質 ===
+        // 背包掛架
+        const backpackGeo = new THREE.BoxGeometry(1.8, 2.4, 1.2);
+        const backpack = new THREE.Mesh(backpackGeo, darkMat);
+        backpack.position.set(0, 4.0, -1.8); 
+        group.add(backpack);
+
+        // 槍枝群組
+        const gunGroup = new THREE.Group();
+        gunGroup.position.set(-1.0, 5.0, -2.2); 
+        gunGroup.rotation.x = -0.2; 
+        group.add(gunGroup);
+
+        // 槍管 (啡色)
+        const barrelGeo = new THREE.CylinderGeometry(0.3, 0.35, 6.0, 16);
+        const barrel = new THREE.Mesh(barrelGeo, gunBarrelMat);
+        barrel.position.y = 1.5;
+        gunGroup.add(barrel);
+
+        // 槍口 (啡色)
+        const muzzleGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.8, 16);
+        const muzzle = new THREE.Mesh(muzzleGeo, gunBarrelMat);
+        muzzle.position.y = 4.5; 
+        gunGroup.add(muzzle);
+
+        // 追擊器/瞄準鏡 (深黃色)
+        const sensorGeo = new THREE.BoxGeometry(0.5, 1.0, 0.6);
+        const sensor = new THREE.Mesh(sensorGeo, gunSensorMat);
+        sensor.position.set(0, 1.0, 0.5); 
+        gunGroup.add(sensor);
+
+        return group;
     }
 
     // --- 遊戲邏輯 ---
@@ -599,6 +792,7 @@
             if(hp) hp.remove();
         }
         unitMeshes = {};
+        glowMeshes = [];
         
         turnCount = 1;
         document.getElementById('turn-count').innerText = 1;
@@ -655,21 +849,33 @@
         }
 
         let mesh = unitMeshes[unit.id];
+        const teamColor = unit.team === TEAM_PLAYER ? 0x4da6ff : 0xff4d4d;
+
         if (!mesh) {
-            const geometry = new THREE.CylinderGeometry(3, 3, 8, 16);
-            const color = unit.team === TEAM_PLAYER ? 0x4da6ff : 0xff4d4d;
-            const material = new THREE.MeshPhongMaterial({ color: color });
-            mesh = new THREE.Mesh(geometry, material);
-            mesh.castShadow = true; mesh.receiveShadow = true;
-            
+            // [修改] 傳入 unit.team 讓函式知道是誰，決定光劍顏色
+            mesh = createRobotModel(teamColor, unit.team);
             const pos = logicalToWorld(unit.x, unit.y);
             mesh.position.set(pos.x, pos.y, pos.z);
+            
+            // 初始面向
+            if (unit.team === TEAM_PLAYER) {
+                mesh.rotation.y = Math.PI; 
+            } else {
+                mesh.rotation.y = 0;
+            }
+
             scene.add(mesh);
             unitMeshes[unit.id] = mesh;
             createHPBar(unit);
         }
-        if (unit.hasActed) { mesh.material.color.setHex(0x555555); } 
-        else { mesh.material.color.setHex(unit.team === TEAM_PLAYER ? 0x4da6ff : 0xff4d4d); }
+
+        const targetColor = unit.hasActed ? 0x555555 : teamColor;
+        
+        mesh.traverse((child) => {
+            if (child.isMesh && child.userData.isArmor) {
+                child.material.color.setHex(targetColor);
+            }
+        });
         
         updateHPBar(unit);
     }
@@ -727,7 +933,12 @@
 
     function moveUnit3D(unit, tx, ty) {
         return new Promise(resolve => {
-            const mesh = unitMeshes[unit.id]; const targetPos = logicalToWorld(tx, ty);
+            const mesh = unitMeshes[unit.id]; 
+            const targetPos = logicalToWorld(tx, ty);
+
+            // 移動時面向目標方向
+            mesh.lookAt(targetPos.x, mesh.position.y, targetPos.z);
+
             const tl = gsap.timeline({ onComplete: () => { unit.x = tx; unit.y = ty; resolve(); }});
             tl.to(mesh.position, { x: targetPos.x, z: targetPos.z, y: targetPos.y, duration: 0.5, ease: "power2.inOut" });
         });
@@ -741,6 +952,18 @@
 
     function animate() {
         requestAnimationFrame(animate);
+        
+        const time = Date.now() * 0.005;
+        const opacity = 0.5 + Math.sin(time) * 0.15; 
+        const scale = 1 + Math.sin(time) * 0.05;    
+        
+        glowMeshes.forEach(glow => {
+            if(glow) {
+                glow.material.opacity = opacity;
+                glow.scale.set(scale, 1, scale); 
+            }
+        });
+
         units.forEach(u => {
             if (u.hp > 0 && unitMeshes[u.id]) {
                 const screenPos = toScreenPosition(unitMeshes[u.id], 0, 30);
@@ -757,17 +980,20 @@
 
     function clearHighlights() {
         for(let y=0; y<BOARD_SIZE; y++) { for(let x=0; x<BOARD_SIZE; x++) {
-                const mesh = gridMeshes[y][x]; mesh.material.color.setHex(mesh.userData.originalColor); mesh.material.emissive.setHex(0x000000);
+                const mesh = gridMeshes[y][x];
+                mesh.material.opacity = 0.0; 
+                mesh.material.color.setHex(0x000000); 
         }}
     }
 
     function highlightGrid(x, y, type) {
         if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return;
         const mesh = gridMeshes[y][x];
-        if (type === 'move') mesh.material.color.setHex(0x00aa00);
-        else if (type === 'attack') mesh.material.color.setHex(0xaa0000);
-        else if (type === 'range') mesh.material.color.setHex(0xcc8888);
-        else if (type === 'select') mesh.material.emissive.setHex(0x555500);
+        mesh.material.opacity = 0.5; 
+        if (type === 'move') mesh.material.color.setHex(0x00aa00); 
+        else if (type === 'attack') mesh.material.color.setHex(0xaa0000); 
+        else if (type === 'range') mesh.material.color.setHex(0xcc8888); 
+        else if (type === 'select') mesh.material.color.setHex(0xffff00); 
     }
 
     function handleCellClick(x, y) {
@@ -791,12 +1017,12 @@
         if (gameState === 'MOVING') {
             if (x === selectedUnit.x && y === selectedUnit.y) { commitMove(x, y); return; }
             const mesh = gridMeshes[y][x];
-            if (mesh.material.color.getHex() === 0x00aa00) { commitMove(x, y); } else { cancelMovePhase(); }
+            if (mesh.material.color.getHex() === 0x00aa00 && mesh.material.opacity > 0) { commitMove(x, y); } else { cancelMovePhase(); }
             return;
         }
         if (gameState === 'TARGETING') {
             const mesh = gridMeshes[y][x];
-            if (mesh.material.color.getHex() === 0xaa0000 && clickedUnit && clickedUnit.team === TEAM_ENEMY) { executeAttack(selectedUnit, clickedUnit); } 
+            if (mesh.material.color.getHex() === 0xaa0000 && mesh.material.opacity > 0 && clickedUnit && clickedUnit.team === TEAM_ENEMY) { executeAttack(selectedUnit, clickedUnit); } 
             else { backToActionMenu(); }
         }
     }
@@ -847,7 +1073,8 @@
     }
 
     async function commitMove(x, y) {
-        gameState = 'ANIMATING'; await moveUnit3D(selectedUnit, x, y);
+        gameState = 'ANIMATING'; 
+        await moveUnit3D(selectedUnit, x, y);
         gameState = 'ACTION_SELECT'; clearHighlights(); highlightGrid(x, y, 'select'); updateMenuButtons(); showActionMenu3D(selectedUnit);
     }
 
@@ -896,6 +1123,11 @@
         const teamName = source.team === TEAM_PLAYER ? '我方' : '敵方'; const actionName = isCounter ? '反擊' : '攻擊'; const logStyle = isCounter ? 'log-counter' : 'normal';
         log(`${teamName} ${actionName} (${wName})! (命中:${hitChance}%)`, logStyle);
         const sMesh = unitMeshes[source.id]; const tMesh = unitMeshes[target.id];
+
+        // 攻擊時，雙方互相面向
+        sMesh.lookAt(tMesh.position.x, sMesh.position.y, tMesh.position.z);
+        tMesh.lookAt(sMesh.position.x, tMesh.position.y, sMesh.position.z);
+
         await sleep(200);
         if (weaponType === 'melee') {
             playSound(sfxAttack); showSwordIcon(source);
