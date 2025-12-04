@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>SRW Web Game (Colored Saber & Gun)</title>
+    <title>SRW Web Game (Topdown Height Fixed)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
 
@@ -64,6 +64,7 @@
             font-size: 48px; font-weight: bold; font-style: italic; 
             border-top: 2px solid #fff; border-bottom: 2px solid #fff;
             transition: left 0.5s ease-out; pointer-events: none;
+            padding-right: 340px; 
         }
 
         #action-menu {
@@ -235,7 +236,7 @@
 
     // 隨機載入地圖
     const textureLoader = new THREE.TextureLoader();
-    const mapFiles = ['map1.png', 'map2.png', 'map3.png' , 'map4.png' ,'map5.png'];
+    const mapFiles = ['map1.png', 'map2.png', 'map3.png', 'map4.png', 'map5.png'];
     const randomMapIndex = Math.floor(Math.random() * mapFiles.length);
     const selectedMapFile = mapFiles[randomMapIndex];
     const mapPath = 'assets/map/' + selectedMapFile;
@@ -345,6 +346,7 @@
         camera.lookAt(cameraTarget);
     }
 
+    // --- [修改] 重置相機邏輯：鳥瞰時設定高度為260 ---
     function resetCamera(mode) {
         playClick();
         let newX = 0, newZ = 0;
@@ -355,7 +357,7 @@
             newX = 30; newZ = 15; 
         } else if (mode === 'topdown') {
             document.getElementById('cam-rotate').value = 0;
-            document.getElementById('cam-height').value = 500;
+            document.getElementById('cam-height').value = 260; // 硬編碼為260
             document.getElementById('cam-zoom').value = 10;
             newX = 0; newZ = 0;
         }
@@ -939,6 +941,7 @@
             // 移動時面向目標方向
             mesh.lookAt(targetPos.x, mesh.position.y, targetPos.z);
 
+            // [修改] 增加斜向判定權重，讓移動時更像是在"走"斜線 (如果有的話)
             const tl = gsap.timeline({ onComplete: () => { unit.x = tx; unit.y = ty; resolve(); }});
             tl.to(mesh.position, { x: targetPos.x, z: targetPos.z, y: targetPos.y, duration: 0.5, ease: "power2.inOut" });
         });
@@ -1271,7 +1274,15 @@
                     let tx = enemy.x + dx; let ty = enemy.y + dy;
                     if (tx < 0 || tx >= BOARD_SIZE || ty < 0 || ty >= BOARD_SIZE) continue;
                     if (getUnitAt(tx, ty) && (tx!==enemy.x || ty!==enemy.y)) continue;
-                    let distToTarget = Math.abs(tx - target.x) + Math.abs(ty - target.y); let score = Math.abs(distToTarget - 1); 
+                    let distToTarget = Math.abs(tx - target.x) + Math.abs(ty - target.y); 
+                    // 優先目標: 距離目標射程1格
+                    let score = Math.abs(distToTarget - 1); 
+                    
+                    // 次要目標: 優先斜行 (Tie-breaker)
+                    let dxMove = Math.abs(tx - enemy.x);
+                    let dyMove = Math.abs(ty - enemy.y);
+                    score -= Math.min(dxMove, dyMove) * 0.01;
+
                     if (score < minMoveDist) { minMoveDist = score; bestX = tx; bestY = ty; }
             }}
             selectedUnit = enemy; gameState = 'ANIMATING'; await moveUnit3D(enemy, bestX, bestY); await sleep(200);
